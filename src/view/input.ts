@@ -1,20 +1,38 @@
-import type { World } from '../game/types';
-import { MAP } from '../game/config';
-import { command } from '../game/commands';
+import type { World, Unit } from '../game/types';
+import { ABILITIES, MAP, RULES, type Ability, type Building } from '../game/config';
+import { command, steerSelection } from '../game/commands';
+import { ABILITY_KEYS, bindAbility, learnedAbilities, movementDirection, syncAbilityBindings, type AbilityBindings } from '../game/hotkeys';
+import { cast } from '../game/abilities';
+import { inSafeZone } from '../game/objectives';
 import type { Battlefield } from './battlefield';
 export class Input {
   readonly selected = new Set<number>();
   attackMove = false;
+  activeRegiment: number | null = null;
+  cursorTarget?: Unit;
+  readonly movementKeys = new Set<string>();
+  readonly abilityBindings: AbilityBindings = {};
+  private steering = new Set<number>();
+  private cursor = document.createElement('div');
   private start?: { x: number; y: number };
   private box = document.createElement('div');
   constructor(private w: World, private view: Battlefield, readonly onKey: (key: string) => void = () => {}) {
     this.box.className = 'selection-box'; document.body.append(this.box);
+    this.cursor.className = 'keyboard-cursor'; this.cursor.innerHTML = '<span class="crosshair"></span><small></small>';
+    view.canvas.parentElement!.append(this.cursor);
+    try {
+      const saved = JSON.parse(localStorage.getItem('commander-wars-ability-keys') ?? '{}');
+      for (const ability of Object.keys(ABILITIES) as Ability[]) if (saved[ability] === null || ABILITY_KEYS.includes(saved[ability])) this.abilityBindings[ability] = saved[ability];
+      const seen = new Set<string>();
+      for (const ability of Object.keys(this.abilityBindings) as Ability[]) { const key = this.abilityBindings[ability]; if (key && seen.has(key)) delete this.abilityBindings[ability]; else if (key) seen.add(key); }
+    } catch { /* Preferences are optional when storage is unavailable. */ }
     const keep = w.units.find(u => u.team === 0 && u.kind === 'base'); if (keep) this.selected.add(keep.id);
     view.canvas.addEventListener('contextmenu', e => e.preventDefault());
     view.canvas.addEventListener('pointerdown', e => {
       view.canvas.setPointerCapture(e.pointerId);
       if (e.button === 0) this.start = { x: e.clientX, y: e.clientY };
       if (e.button === 2) {
+        this.cancelSteering();
         const point = view.ground(e.clientX, e.clientY); const id = view.pick(e.clientX, e.clientY);
         const enemy = w.units.find(u => u.id === id && u.team !== 0);
         if (point) command(w, this.selected, enemy ? 'attack' : 'move', point, enemy?.id);
@@ -30,9 +48,11 @@ export class Input {
       if (e.button !== 0 || !this.start) return;
       const start = this.start; this.start = undefined; this.box.style.display = 'none';
       if (this.attackMove) {
+        this.cancelSteering();
         const p = view.ground(e.clientX, e.clientY); if (p) command(w, this.selected, 'advance', p);
         this.attackMove = false; return;
       }
+      this.cancelSteering(); this.activeRegiment = null;
       if (!e.shiftKey) this.selected.clear();
       if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6) {
         for (const u of w.units) {
@@ -47,39 +67,108 @@ export class Input {
     });
     view.canvas.addEventListener('wheel', e => { e.preventDefault(); view.zoom = Math.max(25, Math.min(MAP.overviewZoom, view.zoom + e.deltaY * 0.08)); view.resize(); }, { passive: false });
     window.addEventListener('keydown', e => {
-      if ((e.target as HTMLElement).matches('input,select,textarea')) return;
-      const k = e.key.toLowerCase();
-      if (/^[1-4]$/.test(k)) {
-        e.preventDefault(); const index = Number(k) - 1;
-        if (e.ctrlKey) this.assignRegiment(index); else this.selectRegiment(index);
+      if ((e.target as HTMLElement).matches('input,select,textarea') || (e.target as HTMLElement).isContentEditable) {
+        if (e.key === 'Escape') { (e.target as HTMLElement).blur(); e.preventDefault(); } return;
       }
-      if (['w', 'a', 's', 'd'].includes(k)) view.keys.add(k);
-      if (k === 'x') this.attackMove = true;
-      if (k === 'h') command(w, this.selected, 'hold');
-      if (k === 't') command(w, this.selected, 'retreat');
+      if (e.altKey || e.metaKey) return;
+      const k = e.key.toLowerCase();
+      if (/^[1-9]$/.test(k)) {
+        e.preventDefault(); const index = Number(k) - 1;
+        if (!e.repeat) { if (e.ctrlKey) this.assignRegiment(index); else this.selectRegiment(index, e.shiftKey); }
+        return;
+      }
+      if (e.ctrlKey) return;
+      if (['w', 'a', 's', 'd'].includes(k)) { e.preventDefault(); if (!w.paused && w.winner === null) this.movementKeys.add(k); return; }
+      if (k.startsWith('arrow')) { e.preventDefault(); view.keys.add(k); return; }
+      if (['tab', ' ', 'home', 'enter', '+', '=', '-', 'f1'].includes(k)) e.preventDefault();
+      if (e.repeat) return;
+      if (k === 'x') this.attackAtCursor();
+      if (k === 'enter') this.moveAtCursor();
+      if (k === 'h') { this.cancelSteering(); command(w, this.selected, 'hold'); }
+      if (k === 't') { this.cancelSteering(); command(w, this.selected, 'retreat'); }
       if (k === 'f') {
+        this.cancelSteering();
         const ids = new Set([...this.selected].filter(id => w.units.find(u => u.id === id)?.kind !== 'hero'));
         command(w, ids, 'follow');
       }
       if (k === 'f1') { e.preventDefault(); this.selectHero(); }
-      if (k === ' ') { e.preventDefault(); const hero = w.units.find(u => u.team === 0 && u.kind === 'hero'); if (hero) { view.zoom = 45; view.center(hero); view.resize(); } }
-      if (k === 'tab') { e.preventDefault(); this.selectArmy(); }
-      if (k === 'escape') { this.attackMove = false; this.selected.clear(); }
-      if (!e.repeat) this.onKey(k);
+      if (k === ' ') this.focusSelection();
+      if (k === 'tab') this.selectHero(); if (k === '0') this.selectArmy();
+      if (k === 'b') this.selectBuilding('barracks'); if (k === 'k') this.selectBuilding('base');
+      if (k === 'home') { view.zoom = MAP.overviewZoom; view.center({ x: 0, z: 0 }); view.resize(); }
+      if (['+', '=', '-'].includes(k)) { view.zoom = Math.max(25, Math.min(MAP.overviewZoom, view.zoom * (k === '-' ? 1.2 : 1 / 1.2))); view.resize(); }
+      if (k === 'p' && w.winner === null) { this.cancelSteering(); w.paused = !w.paused; }
+      if (k === 'escape') { this.cancelSteering(); this.attackMove = false; this.selected.clear(); this.activeRegiment = null; }
+      syncAbilityBindings(w.players[0], this.abilityBindings);
+      const ability = learnedAbilities(w.players[0]).find(a => this.abilityBindings[a] === k); if (ability) cast(w, 0, ability);
+      this.onKey(k);
     });
-    window.addEventListener('keyup', e => view.keys.delete(e.key.toLowerCase()));
-    window.addEventListener('blur', () => { view.keys.clear(); w.paused = true; this.start = undefined; this.box.style.display = 'none'; });
+    window.addEventListener('keyup', e => {
+      const k = e.key.toLowerCase(); view.keys.delete(k); this.movementKeys.delete(k);
+      const d = movementDirection(this.movementKeys); if (!d.x && !d.z) this.stopSteering();
+    });
+    document.addEventListener('focusin', e => { if ((e.target as HTMLElement).matches('input,select,textarea')) { this.cancelSteering(); view.keys.clear(); } });
+    window.addEventListener('blur', () => { this.cancelSteering(); view.keys.clear(); w.paused = true; this.start = undefined; this.box.style.display = 'none'; });
   }
-  selectHero() { this.selected.clear(); const u = this.w.units.find(u => u.team === 0 && u.kind === 'hero'); if (u) this.selected.add(u.id); }
-  selectBuilding(building: import('../game/config').Building) { const s = this.w.structures.find(s => s.team === 0 && s.building === building); this.selected.clear(); if (s) this.selected.add(s.id); }
-  selectArmy() { this.selected.clear(); this.w.units.filter(u => u.team === 0 && u.kind !== 'base').forEach(u => this.selected.add(u.id)); }
-  selectRegiment(index: number) { this.selected.clear(); this.w.units.filter(u => u.team === 0 && u.regiment === index && u.kind !== 'hero' && u.kind !== 'base').forEach(u => this.selected.add(u.id)); }
+  stepControls() {
+    if (this.w.paused || this.w.winner !== null) { this.cancelSteering(); return; }
+    const direction = movementDirection(this.movementKeys);
+    if (!direction.x && !direction.z) { this.stopSteering(); return; }
+    steerSelection(this.w, this.selected, direction); this.steering = new Set(this.selected);
+  }
+  private stopSteering() { if (this.steering.size) command(this.w, this.steering, 'hold'); this.steering.clear(); }
+  private cancelSteering() { this.stopSteering(); this.movementKeys.clear(); }
+  private cursorPosition() { const r = this.view.canvas.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }
+  private findCursorTarget(): Unit | undefined {
+    const p = this.cursorPosition(), r = this.view.canvas.getBoundingClientRect();
+    const valid = (u: Unit) => u.team !== 0 && u.hp > 0 && !inSafeZone(u);
+    const hitId = this.view.pick(p.x, p.y), hit = this.w.units.find(u => u.id === hitId && valid(u)); if (hit) return hit;
+    let nearest: Unit | undefined, best = 34;
+    for (const u of this.w.units) {
+      if (!valid(u)) continue;
+      const s = this.view.screen(u); if (s.x < r.left || s.x > r.right || s.y < r.top || s.y > r.bottom) continue;
+      const d = Math.hypot(s.x - p.x, s.y - p.y); if (d < best) { nearest = u; best = d; }
+    }
+    return nearest;
+  }
+  updateCursor() {
+    if (this.w.paused || this.w.winner !== null) this.cancelSteering();
+    this.cursorTarget = this.findCursorTarget(); this.cursor.classList.toggle('has-target', !!this.cursorTarget);
+    const p = this.cursorPosition(), point = this.view.ground(p.x, p.y);
+    this.cursor.querySelector('small')!.textContent = this.cursorTarget ? `X · Attack ${this.cursorTarget.kind} · ${Math.ceil(this.cursorTarget.hp)} HP` : `X · Attack-move / Enter · Move${point ? ` · ${Math.round(point.x)}, ${Math.round(point.z)}` : ''}`;
+  }
+  attackAtCursor() {
+    if (this.w.paused || this.w.winner !== null) return;
+    this.cancelSteering(); this.attackMove = false;
+    const p = this.cursorPosition(), point = this.view.ground(p.x, p.y), target = this.findCursorTarget();
+    if (point) command(this.w, this.selected, target ? 'attack' : 'advance', target ?? point, target?.id);
+  }
+  moveAtCursor() {
+    if (this.w.paused || this.w.winner !== null) return;
+    this.cancelSteering(); this.attackMove = false;
+    const p = this.cursorPosition(), point = this.view.ground(p.x, p.y); if (point) command(this.w, this.selected, 'move', point);
+  }
+  focusSelection() {
+    const units = this.w.units.filter(u => this.selected.has(u.id) && u.hp > 0);
+    const site = this.w.structures.find(s => this.selected.has(s.id));
+    const point = units.length ? { x: units.reduce((sum, u) => sum + u.x, 0) / units.length, z: units.reduce((sum, u) => sum + u.z, 0) / units.length } : site ?? this.w.units.find(u => u.team === 0 && u.kind === 'hero');
+    if (point) { this.view.zoom = 45; this.view.center(point); this.view.resize(); }
+  }
+  assignAbility(ability: Ability, key: string) {
+    if (!bindAbility(this.w.players[0], this.abilityBindings, ability, key)) return;
+    try { localStorage.setItem('commander-wars-ability-keys', JSON.stringify(this.abilityBindings)); } catch { /* Session bindings still work. */ }
+  }
+  selectHero() { this.cancelSteering(); this.activeRegiment = null; this.selected.clear(); const u = this.w.units.find(u => u.team === 0 && u.kind === 'hero' && u.hp > 0); if (u) this.selected.add(u.id); }
+  selectBuilding(building: Building) { this.cancelSteering(); this.activeRegiment = null; const s = this.w.structures.find(s => s.team === 0 && s.building === building); this.selected.clear(); if (s && !this.w.players[0].eliminated) this.selected.add(s.id); }
+  selectArmy() { this.cancelSteering(); this.activeRegiment = null; this.selected.clear(); this.w.units.filter(u => u.team === 0 && u.hp > 0 && u.kind !== 'base' && u.kind !== 'hero').forEach(u => this.selected.add(u.id)); }
+  selectRegiment(index: number, add = false) { if (index < 0 || index >= RULES.regimentCount) return; this.cancelSteering(); this.activeRegiment = index; if (!add) this.selected.clear(); this.w.units.filter(u => u.team === 0 && u.hp > 0 && u.regiment === index && u.kind !== 'hero' && u.kind !== 'base').forEach(u => this.selected.add(u.id)); }
   assignRegiment(index: number) {
+    if (index < 0 || index >= RULES.regimentCount) return; this.cancelSteering();
     const troops = this.w.units.filter(u => this.selected.has(u.id) && u.team === 0 && u.kind !== 'hero' && u.kind !== 'base');
     if (!troops.length) return;
     for (const u of troops) { u.regiment = index; u.tactical = false; u.target = undefined; }
     const r = this.w.regiments.find(r => r.team === 0 && r.index === index)!;
     r.anchor = { x: troops.reduce((s, u) => s + u.x, 0) / troops.length, z: troops.reduce((s, u) => s + u.z, 0) / troops.length };
-    r.goal = { ...r.anchor }; r.movement = 'hold';
+    r.goal = { ...r.anchor }; r.movement = 'hold'; this.activeRegiment = index;
   }
 }

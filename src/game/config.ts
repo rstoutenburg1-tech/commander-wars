@@ -21,7 +21,7 @@ export const TEAMS = [
   { name: 'Amber', color: '#e9b75e' }, { name: 'Violet', color: '#b596eb' },
 ];
 export const RULES = {
-  tick: 1 / 20, armyCap: 40, startingFootmen: 4, startingGold: 360, startingWood: 40, startingOre: 30,
+  tick: 1 / 20, armyCap: 40, regimentCount: 9, startingFootmen: 4, startingGold: 360, startingWood: 40, startingOre: 30,
   income: 4, spawnInterval: 20, startingCycleUnits: 2, maxCycleUnits: 8, killBounty: 0.5,
   incomeRates: { goldmine: [0, 4, 6, 9], forest: [0, 1.2, 2, 3], quarry: [0, 0.9, 1.5, 2.5] },
   hero: { xpPerLevel: 55, respawn: [16, 24, 32, 40], mana: 120, manaRegen: 3, hpRegen: 2, deathLevels: 2 },

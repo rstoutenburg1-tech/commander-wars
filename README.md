@@ -22,6 +22,7 @@ Open the local URL printed by Vite. `pnpm build` creates a static site in `dist`
 3. Regiments, formations, doctrine, abilities, central objectives and gameplay verification.
 4. Larger Footmen Wars layout, separated approaches, routing through the arena and slower pacing.
 5. Building-selected production/upgrades, keep hero progression, skill branches and Tier IV.
+6. Keyboard steering, nine regiments, camera cursor targeting and configurable ability hotkeys.
 
 Each milestone is committed as a runnable state. This is a mechanics prototype, not a balanced release.
 
@@ -30,10 +31,12 @@ Each milestone is committed as a runnable state. This is a mechanics prototype, 
 1. **Select the keep** to choose your starting ability and inspect hero XP, stats, level cap and skill points. The Command, Warfare and Endurance branches contain active and passive skills with prerequisites and rank upgrades. Normal ability slots unlock at levels 1, 5 and 12; the ultimate unlocks at level 20. Keep advancement supports four tiers and levels 1–40.
 2. **Select the barracks** to configure future troop waves and upgrade the barracks. Click a troop card to add that class to the wave; use − to reduce it. Wave interval and gold reserve are also in the barracks. Starting production is 2 footmen every 20 seconds. Every generated unit spends gold; army cap is 40 troops.
 3. **Select individual buildings/sites** for their own upgrades. Develop forest and quarry and construct the workshop. Select the keep's **Keep upgrade** tab to advance your base, then select the barracks to upgrade it. Barracks II unlocks archers and musketeers; Barracks III unlocks knights. New composition affects future units only.
-4. Select the commander, right-click to move, and use **Q/E/R** for learned normal abilities in unlock order. **Tab** selects the army; **X**, then left-click, issues attack-move. Selected units show movement, formation and regiment controls. **Follow commander** lets you lead the army with your hero.
-5. Fight for XP and kill bounties. Levels gradually improve stats; base promotions provide a larger jump. Dead commanders respawn, lose two levels down to their tier minimum and retain equipment and learned skills. Re-earning lost levels does not grant duplicate points. Progress toward the next level resets on death; XP banked at the cap stays banked until promotion.
-6. Select the workshop to craft a sword or armor. Selected units' **Central objectives** section offers boss attack orders and merchant trades. Send your commander into the green safe area to heal or sell items.
-7. Destroy enemy keeps. Losing your own keep ends your run. **New match** restarts immediately.
+4. **Tab** selects the commander; **1–9** select regiments; **0** selects all troops. Hold **WASD** to steer the selection; releasing stops the movement order, with troops settling into formation. **Arrow keys** pan the camera independently. The crosshair stays centered on the battlefield view: aim with the camera, then press **X** to attack the highlighted enemy or attack-move to that ground point. **Enter** gives a plain move order to the cursor. Use **Space** to focus the selection and **+/−** to zoom. Mouse selection and right-click orders still work.
+5. **Ctrl+1–9** assigns selected troops to a regiment; **Shift+1–9** adds a regiment to the selection. All starting troops are in Regiment 1. Select the barracks to choose the regiment for future waves. Selected units show formation and regiment settings. **Follow commander** lets you lead the army with your hero.
+6. Learned normal abilities initially use **Q/E/R** in unlock order; the ultimate initially uses **V**. In the keep's **Ability hotkeys** options, assign learned abilities to **Q, E, R, Z, C, V or G**. Choosing an occupied key swaps the assignments. Bindings persist locally between matches. Movement, targeting and selection keys are reserved. Ability keys also work while troops are selected, casting from the living commander.
+7. Fight for XP and kill bounties. Levels gradually improve stats; base promotions provide a larger jump. Dead commanders respawn, lose two levels down to their tier minimum and retain equipment and learned skills. Re-earning lost levels does not grant duplicate points. Progress toward the next level resets on death; XP banked at the cap stays banked until promotion.
+8. Select the workshop to craft a sword or armor. Selected units' **Central objectives** section offers boss attack orders and merchant trades. Send your commander into the green safe area to heal or sell items.
+9. Destroy enemy keeps. Losing your own keep ends your run. **New match** restarts immediately.
 
 ## Controls
 
@@ -42,21 +45,25 @@ Each milestone is committed as a runnable state. This is a mechanics prototype, 
 | Left-click / drag | Select / box-select |
 | Shift + selection | Add to selection |
 | Right-click | Move or attack the clicked enemy |
-| WASD / wheel | Pan / zoom |
-| F1 / Space / Home | Select hero / focus hero / map overview |
-| Tab | Select hero and army |
-| 1–4 / Ctrl+1–4 | Select regiment / assign selected troops |
-| X, then left-click | Attack-move; X avoids conflicting with WASD |
+| WASD (hold) | Steer selected hero/troops; release stops movement order |
+| Arrow keys (hold) | Pan camera and ground point beneath the centered cursor |
+| Tab / F1 | Select hero |
+| 1–9 / Ctrl+1–9 | Select regiment / assign selected troops |
+| Shift+1–9 / 0 | Add regiment to selection / select all troops |
+| X | Attack highlighted enemy at cursor; otherwise attack-move to cursor |
+| Enter | Move selection to cursor |
+| Space / Home | Focus selection / map overview |
+| + or = / − or wheel | Zoom in / zoom out |
 | H / F / T | Hold / follow commander / retreat |
 | K / B | Select keep / barracks |
-| Q / E / R | Learned normal ability slots |
-| V | Learned ultimate |
-| Escape | Cancel attack-move and clear selection |
+| Q / E / R / V (defaults) | Learned normal abilities / ultimate; rebind in keep |
+| P | Pause / resume |
+| Escape | Clear selection; when editing a field, leave the field |
 | Click minimap | Pan to that location |
 
 ## Scope and deliberate shortcuts
 
-Implemented: three AI opponents, four troop types, four keep tiers, building selection and contextual actions, barracks and extraction progression, paid production and reserves, four regiments, three formations, cohesion, doctrine, a ten-node skill system with five normal abilities and an ultimate, hero progression/respawn, a boss with AOE warning, crafting, merchant trading, victory/defeat and developer controls.
+Implemented: three AI opponents, four troop types, four keep tiers, building selection and contextual actions, barracks and extraction progression, paid production and reserves, nine regiments, keyboard movement and camera targeting, configurable ability hotkeys, three formations, cohesion, doctrine, a ten-node skill system with five normal abilities and an ultimate, hero progression/respawn, a boss with AOE warning, crafting, merchant trading, victory/defeat and developer controls.
 
 The map follows the Footmen Wars pattern: four corner base areas, approaches into a large center, a separate merchant safe area and a dedicated boss arena. Width increased from 116 to 250 units (about 4.6× the area). The central battlefield is 100×100 units; the boss arena is 40 units across. Ravines are impassable, and simple waypoint routing sends armies through the center. This is a fixed-layout navigation system, not general RTS pathfinding. Formations use soft slots and break ranks to fight.
 
@@ -73,11 +80,13 @@ pnpm test
 pnpm build
 ```
 
-22 simulation tests cover paid spawning/reserves, construction, troop unlocks, XP banking, death/respawn, elimination, AI progress, formations, doctrine, abilities, merchant safety, crafting, boss rewards, ravine routing, slower opening, skill choices/prerequisites/passives, point retention, building selection, Tier IV/level 40 and area/ultimate effects.
+28 simulation tests cover paid spawning/reserves, construction, troop unlocks, XP banking, death/respawn, elimination, AI progress, formations, doctrine, abilities, merchant safety, crafting, boss rewards, ravine routing, slower opening, skill choices/prerequisites/passives, point retention, building selection, Tier IV/level 40, area/ultimate effects, normalized keyboard movement, stopping, nine regiments, ravine boundaries and hotkey collisions.
 
 Browser checks also exercised right-click movement, abilities, doctrine controls, both tier upgrades, all roster unlocks, crafting/trading, a combat victory and restart. The victory check used a boosted developer commander to make the check short; it does not establish match balance.
 
 The revised browser check uses actual world clicks to select the barracks, keep and resource sites. It checks context-specific upgrades/production, initial skill choice, keep promotion, passive training, ability hotkeys, movement and the larger map. Accelerated simulation and granted resources shorten that check; they do not establish natural match pacing.
+
+The keyboard browser check uses actual key presses for Tab, 1–9, Ctrl+9, WASD, arrow keys, X, Enter and pause. It verifies independent camera movement, cursor targeting that causes damage, Regiment 9 production, ability assignment/swapping, casting and persisted bindings after reload. AI and automatic production are disabled for most of that focused check.
 
 Balance lives in `src/game/config.ts`. Simulation systems are separate from rendering and UI. Add `?debug=1` to the URL to expose `window.commanderWars`. The **Match info & developer controls** section includes grants, promotion, roster spawning, AI/invulnerability toggles and simulation speed.
 

@@ -39,7 +39,7 @@ progress { display: block; width: 100%; height: 7px; accent-color: #66b6b0; marg
 #outcome { position: absolute; top: 35%; left: 25%; width: 50%; text-align: center; padding: 25px; background: #152b2ef0; border: 1px solid #bfb58a; z-index: 3; }
 #outcome h1 { color: #f0d998; margin: 0; }
 #minimap { position: absolute; bottom: 12px; left: 12px; border: 1px solid #87958a; cursor: crosshair; width: 150px; height: 150px; }
-.regiments { display: flex; gap: 4px; }
+.regiments { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
 .regiments button { flex: 1; padding: 4px; }
 .regiments button.active { border-color: #a2dfcd; background: #406461; }
 .ability { width: calc(50% - 3px); text-align: left; font-size: 12px; }
@@ -58,3 +58,11 @@ h3 { font-size: 13px; color: #d8c899; margin: 8px 0; }
 .troop-card button { font-size: 12px; }
 .troop-card span { font-size: 12px; align-self: center; }
 #abilities button { width: 100%; font-size: 12px; }
+.keyboard-cursor { position: absolute; left: 50%; top: 50%; pointer-events: none; z-index: 2; color: #c9fff0; }
+.crosshair { position: absolute; left: -11px; top: -11px; width: 22px; height: 22px; border: 1px solid currentColor; border-radius: 50%; background: #16332d40; }
+.crosshair::before, .crosshair::after { content: ''; position: absolute; background: currentColor; }
+.crosshair::before { width: 32px; height: 1px; top: 10px; left: -6px; }
+.crosshair::after { width: 1px; height: 32px; left: 10px; top: -6px; }
+.keyboard-cursor small { position: absolute; top: 20px; left: 0; transform: translateX(-50%); white-space: nowrap; color: inherit; background: #14272de0; padding: 3px 6px; }
+.keyboard-cursor.has-target { color: #ffad87; }
+.ability-binding select { min-width: 80px; }

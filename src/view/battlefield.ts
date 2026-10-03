@@ -83,10 +83,10 @@ export class Battlefield {
   }
   pan(dt: number) {
     const step = dt * this.zoom * 0.5;
-    if (this.keys.has('w')) this.focus.z -= step;
-    if (this.keys.has('s')) this.focus.z += step;
-    if (this.keys.has('a')) this.focus.x -= step;
-    if (this.keys.has('d')) this.focus.x += step;
+    if (this.keys.has('arrowup')) this.focus.z -= step;
+    if (this.keys.has('arrowdown')) this.focus.z += step;
+    if (this.keys.has('arrowleft')) this.focus.x -= step;
+    if (this.keys.has('arrowright')) this.focus.x += step;
     this.focus.x = clamp(this.focus.x, -MAP.half, MAP.half); this.focus.z = clamp(this.focus.z, -MAP.half, MAP.half);
     this.updateCamera();
   }
@@ -183,7 +183,7 @@ export class Battlefield {
     const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false })); label.position.set(0, 6, 0); label.scale.set(8, 1.5, 1); root.add(label);
     this.scene.add(root); return { root, ring, level };
   }
-  render(w: World, selected: Set<number>) {
+  render(w: World, selected: Set<number>, cursorTarget?: number) {
     for (const [id, b] of this.buildings) if (w.players[w.structures.find(s => s.id === id)!.team].eliminated || b.level !== buildingLevel(w.players[w.structures.find(s => s.id === id)!.team], w.structures.find(s => s.id === id)!.building)) {
       this.scene.remove(b.root); b.root.traverse(o => { if (o instanceof THREE.Sprite) { o.material.map?.dispose(); o.material.dispose(); } }); (b.ring.material as THREE.Material).dispose(); this.buildings.delete(id);
     }
@@ -201,7 +201,8 @@ export class Battlefield {
       if (!v) { v = this.createUnit(u); this.views.set(u.id, v); }
       v.root.position.set(u.x, 0, u.z);
       if (u.kind !== 'base') v.root.rotation.y = u.facing;
-      v.ring.visible = selected.has(u.id);
+      v.ring.visible = selected.has(u.id) || u.id === cursorTarget;
+      (v.ring.material as THREE.MeshBasicMaterial).color.set(u.id === cursorTarget ? '#ff916e' : '#b9fff5');
       v.bar.quaternion.copy(v.root.quaternion.clone().invert().multiply(this.camera.quaternion));
       const ratio = clamp(u.hp / u.maxHp, 0, 1);
       v.fill.scale.x = v.fill.userData.width * ratio;

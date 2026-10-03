@@ -20,7 +20,7 @@ export function createWorld(): World {
       cooldowns: { rally: 0, wind: 0, cleave: 0, warcry: 0, standfast: 0, ultimate: 0 },
       highestLevel: 1, skills: Object.fromEntries(Object.keys(SKILLS).map(id => [id, 0])) as Record<SkillId, number>, abilityOrder: [],
       aiTimer: 0, aiState: 'Muster', bankedXP: 0, items: { sword: false, armor: false } });
-    for (let index = 0; index < 4; index++) w.regiments.push({ team, index, formation: 'line', movement: 'hold', engagement: 'aggressive', priority: 'closest', cohesion: 100, facing: Math.atan2(-base.x, -base.z),
+    for (let index = 0; index < RULES.regimentCount; index++) w.regiments.push({ team, index, formation: 'line', movement: 'hold', engagement: 'aggressive', priority: 'closest', cohesion: 100, facing: Math.atan2(-base.x, -base.z),
       anchor: { x: base.x * 0.82, z: base.z * 0.82 }, goal: { x: base.x * 0.82, z: base.z * 0.82 } });
     spawn(w, team, 'base', base);
     createStructures(w, team);
