@@ -1,0 +1,24 @@
+* { box-sizing: border-box; }
+:root { color-scheme: dark; font: 14px/1.45 system-ui, sans-serif; color: #e7ebdd; background: #162227; }
+body { margin: 0; }
+#app { height: 100dvh; display: flex; flex-direction: column; min-width: 840px; }
+header { min-height: 58px; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid #3c5156; background: #17272d; }
+header strong { letter-spacing: 0.1em; font-size: 18px; }
+.muted { color: #99aeb1; font-size: 10px; margin-left: 15px; letter-spacing: .12em; }
+main { display: flex; flex: 1; min-height: 0; }
+#battlefield { flex: 1; position: relative; min-width: 0; overflow: hidden; }
+canvas { display: block; }
+.objective { position: absolute; top: 14px; left: 18px; padding: 8px 12px; background: #17282bd9; border-left: 3px solid #d7c68d; pointer-events: none; }
+aside { width: 285px; flex-shrink: 0; padding: 14px; overflow: auto; background: #1c2d32; border-left: 1px solid #3c5156; }
+h2 { font-size: 12px; text-transform: uppercase; color: #c6bc92; letter-spacing: .1em; margin: 20px 0 8px; }
+h2:first-child { margin-top: 2px; }
+p { color: #b8c7c8; font-size: 12px; margin: 6px 0; }
+button,select,input { border: 1px solid #4e6469; background: #2b4147; color: #e5eddf; border-radius: 3px; padding: 7px 9px; font: inherit; }
+button { cursor: pointer; }
+button:hover { background: #39575b; border-color: #7ca7a6; }
+button:disabled { opacity: 0.45; cursor: default; }
+aside button { margin: 3px 0; }
+.buttons { display: flex; flex-wrap: wrap; gap: 5px; }
+details { margin-top: 20px; color: #b1c5c4; font-size: 12px; }
+footer { padding: 9px 20px; display: flex; justify-content: space-between; min-height: 38px; background: #17272d; border-top: 1px solid #3c5156; color: #afc3c1; }
+.selection-box { position: fixed; pointer-events: none; border: 1px solid #9ffff0; background: #76e8db25; display: none; z-index: 5; }
