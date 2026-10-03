@@ -9,7 +9,7 @@ export class Input {
   private box = document.createElement('div');
   constructor(private w: World, private view: Battlefield, readonly onKey: (key: string) => void = () => {}) {
     this.box.className = 'selection-box'; document.body.append(this.box);
-    const hero = w.units.find(u => u.team === 0 && u.kind === 'hero'); if (hero) this.selected.add(hero.id);
+    const keep = w.units.find(u => u.team === 0 && u.kind === 'base'); if (keep) this.selected.add(keep.id);
     view.canvas.addEventListener('contextmenu', e => e.preventDefault());
     view.canvas.addEventListener('pointerdown', e => {
       view.canvas.setPointerCapture(e.pointerId);
@@ -42,7 +42,7 @@ export class Input {
         }
       } else {
         const id = view.pick(e.clientX, e.clientY);
-        if (id !== undefined && w.units.find(u => u.id === id)?.team === 0) this.selected.add(id);
+        if (id !== undefined && (w.units.find(u => u.id === id)?.team === 0 || w.structures.find(s => s.id === id)?.team === 0)) this.selected.add(id);
       }
     });
     view.canvas.addEventListener('wheel', e => { e.preventDefault(); view.zoom = Math.max(25, Math.min(MAP.overviewZoom, view.zoom + e.deltaY * 0.08)); view.resize(); }, { passive: false });
@@ -71,6 +71,7 @@ export class Input {
     window.addEventListener('blur', () => { view.keys.clear(); w.paused = true; this.start = undefined; this.box.style.display = 'none'; });
   }
   selectHero() { this.selected.clear(); const u = this.w.units.find(u => u.team === 0 && u.kind === 'hero'); if (u) this.selected.add(u.id); }
+  selectBuilding(building: import('../game/config').Building) { const s = this.w.structures.find(s => s.team === 0 && s.building === building); this.selected.clear(); if (s) this.selected.add(s.id); }
   selectArmy() { this.selected.clear(); this.w.units.filter(u => u.team === 0 && u.kind !== 'base').forEach(u => this.selected.add(u.id)); }
   selectRegiment(index: number) { this.selected.clear(); this.w.units.filter(u => u.team === 0 && u.regiment === index && u.kind !== 'hero' && u.kind !== 'base').forEach(u => this.selected.add(u.id)); }
   assignRegiment(index: number) {

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { MAP, STATS, TEAMS } from '../game/config';
-import type { Effect, Point, Unit, World } from '../game/types';
+import type { Effect, Point, Unit, World, Structure } from '../game/types';
+import { buildingLevel } from '../game/economy';
+import { buildingNames } from '../game/structures';
 import { clamp } from '../game/math';
 
 interface UnitView { root: THREE.Group; ring: THREE.Mesh; bar: THREE.Group; fill: THREE.Mesh }
@@ -15,6 +17,7 @@ export class Battlefield {
   private ray = new THREE.Raycaster();
   private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private views = new Map<number, UnitView>();
+  private buildings = new Map<number, { root: THREE.Group; ring: THREE.Mesh; level: number }>();
   private effects = new Map<Effect, THREE.Object3D>();
   private materials = new Map<string, THREE.MeshLambertMaterial>();
   private ringGeometry = new THREE.RingGeometry(0.85, 1, 28);
@@ -58,15 +61,6 @@ export class Battlefield {
       const path = this.shape(this.scene, this.cube, '#858269', [b.x / 2, 0.03, b.z / 2], [MAP.laneWidth, 0.12, Math.hypot(b.x, b.z)]);
       path.rotation.y = b.x * b.z > 0 ? Math.PI / 4 : -Math.PI / 4;
       this.label(`${TEAMS[i].name.toUpperCase()} KEEP`, b.x, b.z + 7, 1);
-      for (let j = 0; j < 6; j++) {
-        const x = b.x + (b.x < 0 ? -8 : 8) + Math.sin(j * 2) * 3;
-        const z = b.z - 7 + j * 2.5;
-        this.shape(this.scene, this.cylinder, '#594c36', [x, 1, z], [0.3, 2, 0.3]);
-        this.shape(this.scene, this.cone, '#294c3d', [x, 3, z], [1.7, 4, 1.7]);
-      }
-      for (let j = 0; j < 3; j++) this.shape(this.scene, this.helmet, j === 0 ? '#d4ad59' : '#81918e', [b.x + 6 + j, 0.8, b.z + (b.z > 0 ? 8 : -8)], [2.4, 2, 2]);
-      this.shape(this.scene, this.cube, '#a39b7c', [b.x - Math.sign(b.x) * 8, 1, b.z], [3, 2, 4]);
-      this.shape(this.scene, this.cone, TEAMS[i].color, [b.x - Math.sign(b.x) * 8, 3, b.z], [3, 2, 3]);
     });
     this.shape(this.scene, this.cylinder, '#6a897a', [MAP.merchant.x, 0.12, MAP.merchant.z], [MAP.merchant.radius, 0.2, MAP.merchant.radius]);
     this.shape(this.scene, this.cube, '#ac9266', [MAP.merchant.x, 1, MAP.merchant.z], [5, 2, 4]);
@@ -108,7 +102,7 @@ export class Battlefield {
   }
   pick(x: number, y: number): number | undefined {
     this.setRay(x, y);
-    const hit = this.ray.intersectObjects([...this.views.values()].map(v => v.root), true)[0];
+    const hit = this.ray.intersectObjects([...this.views.values(), ...this.buildings.values()].map(v => v.root), true)[0];
     let o: THREE.Object3D | undefined = hit?.object;
     while (o && o.userData.id === undefined) o = o.parent ?? undefined;
     return o?.userData.id;
@@ -163,7 +157,41 @@ export class Battlefield {
     fill.userData.width = width; root.add(bar);
     this.scene.add(root); return { root, ring, bar, fill };
   }
+  private createBuilding(s: Structure, level: number) {
+    const root = new THREE.Group(); root.userData.id = s.id; root.position.set(s.x, 0, s.z);
+    const team = TEAMS[s.team].color, color = level ? team : '#82918b';
+    this.shape(root, this.cube, '#737b67', [0, 0.15, 0], [9, 0.4, 8]);
+    if (s.building === 'barracks') {
+      this.shape(root, this.cube, '#b3a88a', [0, 1.8, 0], [6, 3.5, 4]);
+      this.shape(root, this.cone, color, [0, 4.4, 0], [5, 3, 4]);
+      this.shape(root, this.cube, '#493e31', [0, 1.2, 2.1], [2, 2.2, 0.2]);
+    } else if (s.building === 'crafting') {
+      this.shape(root, this.cube, level ? '#9e8462' : '#58615a', [0, 1, 0], [5, level ? 2 : 0.4, 4]);
+      this.shape(root, this.cube, '#7c8483', [0, level ? 2.6 : 0.6, 0], [3, 1, 1.5]);
+    } else if (s.building === 'forest') {
+      for (let i = 0; i < 3; i++) {
+        this.shape(root, this.cylinder, '#5c4936', [i * 2 - 2, 1, (i % 2) * 2 - 1], [0.4, 2, 0.4]);
+        this.shape(root, this.cone, level ? '#315e42' : '#5d7661', [i * 2 - 2, 3.8, (i % 2) * 2 - 1], [2, 5, 2]);
+      }
+    } else {
+      for (let i = 0; i < 3; i++) this.shape(root, this.helmet, s.building === 'goldmine' ? '#d0a25d' : '#879591', [i * 2 - 2, 1.2, i % 2 * 2 - 1], [3, 3, 3]);
+    }
+    const ring = new THREE.Mesh(this.ringGeometry, new THREE.MeshBasicMaterial({ color: '#b9fff5', side: THREE.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.45; ring.scale.setScalar(5.5); root.add(ring);
+    const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 48;
+    const c = canvas.getContext('2d')!; c.fillStyle = '#16272dda'; c.fillRect(0, 0, 256, 48); c.font = '24px system-ui'; c.textAlign = 'center'; c.fillStyle = '#f5eacb'; c.fillText(buildingNames[s.building], 128, 32);
+    const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false })); label.position.set(0, 6, 0); label.scale.set(8, 1.5, 1); root.add(label);
+    this.scene.add(root); return { root, ring, level };
+  }
   render(w: World, selected: Set<number>) {
+    for (const [id, b] of this.buildings) if (w.players[w.structures.find(s => s.id === id)!.team].eliminated || b.level !== buildingLevel(w.players[w.structures.find(s => s.id === id)!.team], w.structures.find(s => s.id === id)!.building)) {
+      this.scene.remove(b.root); b.root.traverse(o => { if (o instanceof THREE.Sprite) { o.material.map?.dispose(); o.material.dispose(); } }); (b.ring.material as THREE.Material).dispose(); this.buildings.delete(id);
+    }
+    for (const s of w.structures) {
+      if (s.building === 'base' || w.players[s.team].eliminated) continue;
+      let b = this.buildings.get(s.id); if (!b) { b = this.createBuilding(s, buildingLevel(w.players[s.team], s.building)); this.buildings.set(s.id, b); }
+      b.ring.visible = selected.has(s.id);
+    }
     const ids = new Set(w.units.map(u => u.id));
     for (const [id, v] of this.views) if (!ids.has(id)) {
       this.scene.remove(v.root); (v.ring.material as THREE.Material).dispose(); this.views.delete(id);

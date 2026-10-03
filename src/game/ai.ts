@@ -4,11 +4,13 @@ import { distance } from './math';
 import { startUpgrade } from './economy';
 import { cast } from './abilities';
 import { commandRegiment } from './commands';
+import { trainSkill } from './skills';
 export function stepAI(w: World, dt: number) {
   if (!w.aiEnabled) return;
   for (const p of w.players.slice(1)) {
     if (p.eliminated || (p.aiTimer -= dt) > 0) continue;
     p.aiTimer = RULES.ai.thinkInterval;
+    for (const id of ['rally', 'wind', 'discipline', 'resilience', 'cleave', 'inspiration', 'martial', 'ultimate'] as const) trainSkill(w, p.id, id);
     const hero = w.units.find(u => u.team === p.id && u.kind === 'hero');
     const army = w.units.filter(u => u.team === p.id && u.kind !== 'base');
     if (!p.forest) startUpgrade(w, p.id, 'forest');
@@ -17,7 +19,7 @@ export function stepAI(w: World, dt: number) {
     p.production.interval = p.gold < 120 || p.upgrades.some(j => j.building === 'base') ? 30 : RULES.spawnInterval;
     p.production.reserve = 90;
     if (p.barracks < p.tier) startUpgrade(w, p.id, 'barracks');
-    else if (p.tier < 3 && w.time > p.tier * 75) startUpgrade(w, p.id, 'base');
+    else if (p.tier < 4 && w.time > p.tier * 120) startUpgrade(w, p.id, 'base');
     if (p.tier >= 2 && p.goldmine < p.tier) startUpgrade(w, p.id, 'goldmine');
     if (p.barracks === 2) p.production.counts = { footman: 2, archer: 1, musketeer: 1, knight: 0 };
     if (p.barracks >= 3) p.production.counts = { footman: 1, archer: 1, musketeer: 1, knight: 1 };

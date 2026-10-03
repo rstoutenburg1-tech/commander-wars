@@ -14,6 +14,8 @@ export function damageUnit(w: World, victim: Unit, attacker: Unit, amount: numbe
     amount *= 1 - reduction * r.cohesion / 100;
   }
   if (victim.kind === 'hero' && w.players[victim.team].items.armor) amount *= 0.85;
+  const defender = w.players[victim.team], commander = w.units.find(u => u.team === victim.team && u.kind === 'hero' && u.hp > 0);
+  if (defender && commander && defender.standfastUntil > w.time && distance(victim, commander) < ABILITIES.standfast.radius) amount *= 1 - (0.2 + defender.skills.standfast * 0.05);
   victim.hp -= amount;
   if (victim.kind === 'boss' && w.players[attacker.team]) w.players[attacker.team].xp += Math.min(amount, victim.hp + amount) * 0.025;
   if (victim.hp <= 0) kill(w, victim, attacker);
@@ -71,7 +73,8 @@ export function stepCombat(w: World, dt: number) {
       u.facing = Math.atan2(enemy.x - u.x, enemy.z - u.z);
       if (u.attackTimer === 0) {
         const charge = u.kind === 'knight' && r?.engagement === 'charge' && u.travel > 8;
-        const damage = u.damage * (u.kind === 'hero' && d < 2.5 ? 1.5 : charge ? r?.formation === 'wedge' ? 2.4 : 1.8 : 1);
+        const warcry = hero && w.players[u.team].warcryUntil > w.time && distance(hero, u) < ABILITIES.warcry.radius;
+        const damage = u.damage * (u.kind === 'hero' && d < 2.5 ? 1.5 : charge ? r?.formation === 'wedge' ? 2.4 : 1.8 : 1) * (warcry ? 1.2 + w.players[u.team].skills.warcry * 0.1 : 1);
         damageUnit(w, enemy, u, damage);
         if (charge) {
           const defender = w.regiments.find(r => r.team === enemy!.team && r.index === enemy!.regiment);
@@ -79,7 +82,7 @@ export function stepCombat(w: World, dt: number) {
           w.effects.push({ x: enemy.x, z: enemy.z, radius: 3, life: 0.4, color: '#ffd676' });
         }
         u.travel = 0;
-        u.attackTimer = u.cooldown / (rally ? ABILITIES.rally.attackSpeed : 1);
+        u.attackTimer = u.cooldown / (rally ? ABILITIES.rally.attackSpeed + (w.players[u.team].skills.rally - 1) * 0.08 : 1);
         w.effects.push({ x: u.x, z: u.z, to: { x: enemy.x, z: enemy.z }, color: TEAMS[u.team]?.color ?? '#ffc872', life: 0.2, radius: 0.3 });
       }
     } else if (u.speed > 0) {

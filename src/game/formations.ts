@@ -41,6 +41,6 @@ export function stepRegiments(w: World, dt: number) {
       if (distance(u, u.goal) > COHESION.separationDistance) separated++;
     });
     const nearHero = !!hero && distance(hero, r.anchor) < 16;
-    r.cohesion = clamp(r.cohesion + dt * ((!moving || nearHero ? COHESION.recovery : 0.4) - separated / troops.length * COHESION.separationLoss), 0, 100);
+    r.cohesion = clamp(r.cohesion + dt * ((!moving || nearHero ? COHESION.recovery + w.players[r.team].skills.discipline * 0.4 : 0.4) - separated / troops.length * COHESION.separationLoss), 0, 100);
   }
 }

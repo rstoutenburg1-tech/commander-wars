@@ -45,3 +45,16 @@ progress { display: block; width: 100%; height: 7px; accent-color: #66b6b0; marg
 .ability { width: calc(50% - 3px); text-align: left; font-size: 12px; }
 nav button { padding: 6px 4px; font-size: 12px; }
 #formation-help { min-height: 34px; }
+aside { width: 340px; }
+.quick-select { padding-bottom: 12px; border-bottom: 1px solid #46605d; }
+.quick-select button { font-size: 12px; }
+.skill-branch { border-left: 3px solid #688d86; margin: 12px 0; padding-left: 9px; }
+h3 { font-size: 13px; color: #d8c899; margin: 8px 0; }
+.skill { margin-bottom: 12px; }
+.skill button { width: 100%; text-align: left; font-size: 12px; }
+.skill small { display: block; }
+.troop-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.troop-card { background: #243a3e; border: 1px solid #4d6563; padding: 8px; }
+.troop-card button { font-size: 12px; }
+.troop-card span { font-size: 12px; align-self: center; }
+#abilities button { width: 100%; font-size: 12px; }

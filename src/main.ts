@@ -4,7 +4,7 @@ import { step } from './game/simulation';
 import { RULES } from './game/config';
 import { Battlefield } from './view/battlefield';
 import { Input } from './view/input';
-import { HUD } from './ui/hud';
+import { HUD } from './ui/context-hud';
 import { Minimap } from './ui/minimap';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `

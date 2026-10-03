@@ -1,4 +1,4 @@
-import type { Kind, Building, TroopKind } from './config';
+import type { Kind, Building, TroopKind, SkillId, Ability } from './config';
 export interface Point { x: number; z: number }
 export type Order = 'move' | 'advance' | 'hold' | 'attack' | 'follow' | 'retreat';
 export interface Unit extends Point {
@@ -12,7 +12,8 @@ export interface Player {
   tier: number; barracks: number; crafting: number; goldmine: number; forest: number; quarry: number;
   upgrades: { building: Building; to: number; remaining: number; total: number }[];
   production: { interval: number; counts: Record<TroopKind, number>; reserve: number; timer: number; regiment: number; status: string };
-  mana: number; rallyUntil: number; cooldowns: { rally: number; wind: number }; aiTimer: number; aiState: string;
+  mana: number; rallyUntil: number; warcryUntil: number; standfastUntil: number; cooldowns: Record<Ability, number>; aiTimer: number; aiState: string;
+  highestLevel: number; skills: Record<SkillId, number>; abilityOrder: Ability[];
   bankedXP: number; items: { sword: boolean; armor: boolean }; craft?: { item: 'sword' | 'armor'; remaining: number };
 }
 export type Formation = 'line' | 'wall' | 'wedge';
@@ -26,4 +27,6 @@ export interface World {
   time: number; units: Unit[]; players: Player[]; effects: Effect[]; events: string[];
   nextId: number; winner: number | null; paused: boolean; regiments: Regiment[];
   aiEnabled: boolean; invulnerable: boolean; bossTimer: number; merchantGold: number;
+  structures: Structure[];
 }
+export interface Structure extends Point { id: number; team: number; building: Building }

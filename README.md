@@ -20,17 +20,19 @@ Open the local URL printed by Vite. `pnpm build` creates a static site in `dist`
 1. Angled battlefield, selection, movement, commander and basic combat.
 2. Paid automatic production, resources, upgrades, army roster and AI match loop.
 3. Regiments, formations, doctrine, abilities, central objectives and gameplay verification.
+4. Larger Footmen Wars layout, separated approaches, routing through the arena and slower pacing.
+5. Building-selected production/upgrades, keep hero progression, skill branches and Tier IV.
 
 Each milestone is committed as a runnable state. This is a mechanics prototype, not a balanced release.
 
 ## Play the loop
 
-1. Select the commander, right-click to move, and use **Q** for Rally or **E** for Second Wind. **Tab** selects the whole army; **X**, then left-click, issues attack-move.
-2. In **Army**, choose a regiment, formation, movement, engagement and target priority. **Follow commander** lets you lead an army with the hero. Independent troop selections receive individual orders.
-3. In **Supply**, slow or pause spawning to save gold. Every new unit is paid for; the reserve prevents spending below your chosen amount. There is a 40-troop cap per player.
-4. In **Base**, develop forest and quarry and build the workshop. Upgrade the keep, then the barracks. Tier II unlocks archers and musketeers; Tier III unlocks knights. New composition affects future spawns only.
-5. Fight for XP and kill bounties. Levels gradually improve your army; base promotions provide a larger jump. Dead commanders respawn, lose two levels down to their tier minimum, and retain equipment. Progress toward the next level resets on death; XP banked at the tier cap stays banked until promotion.
-6. In **Center**, craft a sword or armor, attack the boss with selected units, or send the commander into the merchant's safe circle to heal or sell equipment.
+1. **Select the keep** to choose your starting ability and inspect hero XP, stats, level cap and skill points. The Command, Warfare and Endurance branches contain active and passive skills with prerequisites and rank upgrades. Normal ability slots unlock at levels 1, 5 and 12; the ultimate unlocks at level 20. Keep advancement supports four tiers and levels 1–40.
+2. **Select the barracks** to configure future troop waves and upgrade the barracks. Click a troop card to add that class to the wave; use − to reduce it. Wave interval and gold reserve are also in the barracks. Starting production is 2 footmen every 20 seconds. Every generated unit spends gold; army cap is 40 troops.
+3. **Select individual buildings/sites** for their own upgrades. Develop forest and quarry and construct the workshop. Select the keep's **Keep upgrade** tab to advance your base, then select the barracks to upgrade it. Barracks II unlocks archers and musketeers; Barracks III unlocks knights. New composition affects future units only.
+4. Select the commander, right-click to move, and use **Q/E/R** for learned normal abilities in unlock order. **Tab** selects the army; **X**, then left-click, issues attack-move. Selected units show movement, formation and regiment controls. **Follow commander** lets you lead the army with your hero.
+5. Fight for XP and kill bounties. Levels gradually improve stats; base promotions provide a larger jump. Dead commanders respawn, lose two levels down to their tier minimum and retain equipment and learned skills. Re-earning lost levels does not grant duplicate points. Progress toward the next level resets on death; XP banked at the cap stays banked until promotion.
+6. Select the workshop to craft a sword or armor. Selected units' **Central objectives** section offers boss attack orders and merchant trades. Send your commander into the green safe area to heal or sell items.
 7. Destroy enemy keeps. Losing your own keep ends your run. **New match** restarts immediately.
 
 ## Controls
@@ -46,15 +48,21 @@ Each milestone is committed as a runnable state. This is a mechanics prototype, 
 | 1–4 / Ctrl+1–4 | Select regiment / assign selected troops |
 | X, then left-click | Attack-move; X avoids conflicting with WASD |
 | H / F / T | Hold / follow commander / retreat |
-| Q / E | Rally / Second Wind |
+| K / B | Select keep / barracks |
+| Q / E / R | Learned normal ability slots |
+| V | Learned ultimate |
 | Escape | Cancel attack-move and clear selection |
 | Click minimap | Pan to that location |
 
 ## Scope and deliberate shortcuts
 
-Implemented: three AI opponents, four troop types, three base tiers, barracks and extraction progression, paid automatic production and reserves, four regiments, three formations, cohesion, behavior/target priority, two mana abilities, hero progression/respawn, a boss with AOE warning, two crafted items, safe-zone merchant trading, victory/defeat and developer controls.
+Implemented: three AI opponents, four troop types, four keep tiers, building selection and contextual actions, barracks and extraction progression, paid production and reserves, four regiments, three formations, cohesion, doctrine, a ten-node skill system with five normal abilities and an ultimate, hero progression/respawn, a boss with AOE warning, crafting, merchant trading, victory/defeat and developer controls.
 
-This is an open battlefield with simple local collision separation, not full RTS pathfinding. Formations are soft slots: troops break ranks to fight. The boss does not respawn; damage grants XP and the killing player gets the large reward. Merchant healing is consumed immediately. Crafted equipment is automatically equipped and limited to one sword and one armor. Eliminated territory remains inert. There is no Tier IV, skill tree, multiplayer, persistence, captured territory system or final balance.
+The map follows the Footmen Wars pattern: four corner base areas, approaches into a large center, a separate merchant safe area and a dedicated boss arena. Width increased from 116 to 250 units (about 4.6× the area). The central battlefield is 100×100 units; the boss arena is 40 units across. Ravines are impassable, and simple waypoint routing sends armies through the center. This is a fixed-layout navigation system, not general RTS pathfinding. Formations use soft slots and break ranks to fight.
+
+Movement is slower, troops have roughly 50% more HP, attacks have longer intervals and keeps have 6,500 starting HP. AI begins advancing after 2:30 and starts proactive base assaults after 6:00; it still defends threatened bases. Resource income and default production are slower. These are provisional pacing changes.
+
+The boss does not respawn; damage grants XP and the killing player gets the large reward. Merchant healing is consumed immediately. Equipment is automatically equipped. Secondary buildings are selectable infrastructure sites; the keep remains the destructible elimination objective. Eliminated territory stays inert. There is no multiplayer, persistence, captured territory or final balance.
 
 The 10–20 minute match target is **not validated yet**. Test the control, economy and formation decisions before treating the numbers as balance. The full source specification is preserved in [docs/original-specification.md](docs/original-specification.md).
 
@@ -65,11 +73,13 @@ pnpm test
 pnpm build
 ```
 
-Simulation tests cover paid spawning/reserves, construction timing, troop unlocks, XP banking, death and respawn, elimination, AI progress, frontal formation protection, independent orders, target priority, abilities, merchant safety, crafting and boss damage/rewards.
+22 simulation tests cover paid spawning/reserves, construction, troop unlocks, XP banking, death/respawn, elimination, AI progress, formations, doctrine, abilities, merchant safety, crafting, boss rewards, ravine routing, slower opening, skill choices/prerequisites/passives, point retention, building selection, Tier IV/level 40 and area/ultimate effects.
 
 Browser checks also exercised right-click movement, abilities, doctrine controls, both tier upgrades, all roster unlocks, crafting/trading, a combat victory and restart. The victory check used a boosted developer commander to make the check short; it does not establish match balance.
 
-Balance lives in `src/game/config.ts`. Simulation systems are separate from Three.js rendering and HTML UI. Add `?debug=1` to the URL to expose `window.commanderWars` for inspection. The **Intel** panel includes resource/XP grants, instant promotion, roster spawning, AI and invulnerability toggles, and simulation speed.
+The revised browser check uses actual world clicks to select the barracks, keep and resource sites. It checks context-specific upgrades/production, initial skill choice, keep promotion, passive training, ability hotkeys, movement and the larger map. Accelerated simulation and granted resources shorten that check; they do not establish natural match pacing.
+
+Balance lives in `src/game/config.ts`. Simulation systems are separate from rendering and UI. Add `?debug=1` to the URL to expose `window.commanderWars`. The **Match info & developer controls** section includes grants, promotion, roster spawning, AI/invulnerability toggles and simulation speed.
 
 ## Static hosting
 

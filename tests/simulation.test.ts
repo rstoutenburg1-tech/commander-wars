@@ -11,6 +11,8 @@ import { cast } from '../src/game/abilities.ts';
 import { merchant, startCraft, stepObjectives, inSafeZone } from '../src/game/objectives.ts';
 import { MAP, RULES, STATS, BOSS } from '../src/game/config.ts';
 import { route, walkable, moveOnMap } from '../src/game/navigation.ts';
+import { trainSkill, skillPoints, skillReason, grantLevelPoints } from '../src/game/skills.ts';
+import { selectedStructure } from '../src/game/structures.ts';
 
 test('automatic spawning pays for each unit, respects reserve, never creates debt', () => {
   const w = createWorld(), p = w.players[0];
@@ -37,10 +39,10 @@ test('XP banks at cap and commander death respects tier minimum', () => {
   const w = createWorld(), p = w.players[0]; p.level = 10; p.xp = 5000; progressHero(w, 0.05);
   assert.equal(p.level, 10); assert.equal(p.bankedXP, 5000);
   p.crafting = 1; p.gold = 1000; p.wood = 200; p.ore = 200;
-  assert.equal(startUpgrade(w, 0, 'base'), true); stepEconomy(w, 30.1);
+  assert.equal(startUpgrade(w, 0, 'base'), true); stepEconomy(w, 45.1);
   progressHero(w, 0.05); assert.ok(p.level > 11); p.level = 11;
   const hero = w.units.find(u => u.team === 0 && u.kind === 'hero')!, enemy = w.units.find(u => u.team === 1 && u.kind === 'hero')!;
-  kill(w, hero, enemy); assert.equal(p.level, levelFloor(2)); assert.equal(p.respawn, 22);
+  kill(w, hero, enemy); assert.equal(p.level, levelFloor(2)); assert.equal(p.respawn, RULES.hero.respawn[1]);
 });
 test('base destruction eliminates army and produces victory', () => {
   const w = createWorld(), hero = w.units.find(u => u.team === 0 && u.kind === 'hero')!;
@@ -83,6 +85,7 @@ test('ranged target priority changes which in-range enemy is attacked', () => {
 });
 test('mana and cooldowns gate abilities, Rally restores cohesion', () => {
   const w = createWorld(), p = w.players[0], hero = w.units.find(u => u.team === 0 && u.kind === 'hero')!;
+  p.level = 5; grantLevelPoints(p); trainSkill(w, 0, 'rally'); trainSkill(w, 0, 'wind');
   w.regiments[0].anchor = { x: hero.x, z: hero.z }; w.regiments[0].cohesion = 30;
   assert.equal(cast(w, 0, 'rally'), true); assert.equal(p.mana, 75); assert.equal(w.regiments[0].cohesion, 60);
   assert.equal(cast(w, 0, 'rally'), false);
@@ -107,9 +110,58 @@ test('commander respawns with equipment and death penalty remains after next tic
   const w = createWorld(), p = w.players[0], hero = w.units.find(u => u.team === 0 && u.kind === 'hero')!, enemy = w.units.find(u => u.team === 1 && u.kind === 'hero')!;
   p.level = 8; p.xp = 300; p.items.sword = true; p.production.interval = 0; w.aiEnabled = false;
   kill(w, hero, enemy); progressHero(w, 0.05); assert.equal(p.level, 6);
-  for (let i = 0; i < 250; i++) step(w, 0.05);
+  for (let i = 0; i < (RULES.hero.respawn[0] + 1) * 20; i++) step(w, 0.05);
   const respawn = w.units.find(u => u.team === 0 && u.kind === 'hero')!;
   assert.ok(respawn); assert.notEqual(respawn.id, hero.id); assert.ok(respawn.damage > STATS.hero.damage);
+});
+test('starting skill is a choice, additional active slots require level gates', () => {
+  const w = createWorld(), p = w.players[0];
+  assert.equal(cast(w, 0, 'rally'), false); assert.equal(skillPoints(p), 1);
+  assert.equal(trainSkill(w, 0, 'cleave'), true); assert.equal(trainSkill(w, 0, 'wind'), false);
+  p.level = 5; grantLevelPoints(p); assert.equal(trainSkill(w, 0, 'wind'), true);
+  assert.deepEqual(p.abilityOrder, ['cleave', 'wind']); assert.equal(trainSkill(w, 0, 'rally'), false);
+  p.level = 12; p.tier = 2; grantLevelPoints(p); assert.equal(trainSkill(w, 0, 'rally'), true);
+  trainSkill(w, 0, 'martial'); trainSkill(w, 0, 'martial');
+  assert.equal(skillReason(p, 'warcry'), 'All 3 normal ability slots are filled');
+});
+test('skill prerequisites and passive effects are enforced', () => {
+  const w = createWorld(), p = w.players[0]; p.level = 12; p.tier = 2; grantLevelPoints(p);
+  assert.match(skillReason(p, 'inspiration')!, /Discipline/);
+  trainSkill(w, 0, 'rally'); const troop = w.units.find(u => u.team === 0 && u.kind === 'footman')!, hp = troop.maxHp;
+  assert.equal(trainSkill(w, 0, 'discipline'), true); assert.ok(troop.maxHp > hp);
+  assert.equal(trainSkill(w, 0, 'inspiration'), false); trainSkill(w, 0, 'discipline');
+  const damage = troop.damage; assert.equal(trainSkill(w, 0, 'inspiration'), true); assert.ok(troop.damage > damage);
+});
+test('death and regaining levels do not duplicate skill points or remove skills', () => {
+  const w = createWorld(), p = w.players[0]; p.level = 8; grantLevelPoints(p); trainSkill(w, 0, 'rally');
+  const points = skillPoints(p); kill(w, w.units.find(u => u.team === 0 && u.kind === 'hero')!, w.units.find(u => u.team === 1 && u.kind === 'hero')!);
+  assert.equal(p.skills.rally, 1); assert.equal(skillPoints(p), points);
+  p.level = 8; grantLevelPoints(p); assert.equal(skillPoints(p), points);
+});
+test('each infrastructure site is separately selectable and belongs to its player', () => {
+  const w = createWorld(), barracks = w.structures.find(s => s.team === 0 && s.building === 'barracks')!;
+  assert.equal(selectedStructure(w, new Set([barracks.id]))?.building, 'barracks');
+  assert.equal(selectedStructure(w, new Set([w.structures.find(s => s.team === 1 && s.building === 'barracks')!.id])), undefined);
+  assert.equal(new Set(w.structures.map(s => s.id)).size, 24);
+});
+test('Tier IV promotes to Marshal and supports the level 40 cap', () => {
+  const w = createWorld(), p = w.players[0]; p.tier = 3; p.level = 30; p.barracks = 3; p.crafting = 1;
+  p.gold = 2000; p.wood = 1000; p.ore = 1000;
+  assert.equal(startUpgrade(w, 0, 'base'), true); stepEconomy(w, 90.1);
+  assert.equal(p.tier, 4); assert.equal(p.level, 31); p.xp = 100000; progressHero(w, 0.05);
+  assert.equal(p.level, 40); assert.equal(p.highestLevel, 40); assert.ok(p.bankedXP > 0);
+});
+test('learned area strike damages enemies and ultimate heals hero and nearby troops once', () => {
+  const w = createWorld(), p = w.players[0]; p.tier = 2; p.level = 20; grantLevelPoints(p);
+  trainSkill(w, 0, 'cleave'); trainSkill(w, 0, 'ultimate');
+  const hero = w.units.find(u => u.team === 0 && u.kind === 'hero')!, enemy = w.units.find(u => u.team === 1 && u.kind === 'footman')!, ally = w.units.find(u => u.team === 0 && u.kind === 'footman')!;
+  hero.x = 0; hero.z = 0; enemy.x = 2; enemy.z = 0; ally.x = -2; ally.z = 0;
+  const enemyHp = enemy.hp; assert.equal(cast(w, 0, 'cleave'), true); assert.ok(enemy.hp < enemyHp);
+  hero.hp = 200; ally.hp = 100; p.mana = 120;
+  const fallen = w.units.find(u => u.team === 0 && u.kind === 'footman' && u.id !== ally.id)!;
+  fallen.x = 1; fallen.z = 0; fallen.hp = 0;
+  assert.equal(cast(w, 0, 'ultimate'), true); assert.ok(Math.abs(hero.hp - 200 - hero.maxHp * 0.4) < 0.01); assert.ok(ally.hp > 100);
+  assert.equal(fallen.hp, 0);
 });
 test('boss is present, uses damaging AOE and grants a substantial kill reward', () => {
   const w = createWorld(), boss = w.units.find(u => u.kind === 'boss')!, hero = w.units.find(u => u.team === 0 && u.kind === 'hero')!;

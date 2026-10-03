@@ -1,6 +1,7 @@
 import { RULES, STATS, MAP } from './config';
 import { distance } from './math';
 import type { World } from './types';
+import { grantLevelPoints } from './skills';
 export const levelFloor = (tier: number) => (tier - 1) * 10 + 1;
 export const xpRequired = (level: number) => level * RULES.hero.xpPerLevel;
 export function refreshStats(w: World, team: number) {
@@ -12,8 +13,11 @@ export function refreshStats(w: World, team: number) {
       ? 1 + (p.tier - 1) * 0.9 + (p.level - levelFloor(p.tier)) * 0.04
       : 1 + (p.tier - 1) * 0.22 + (p.level - 1) * 0.018;
     const ratio = u.hp / u.maxHp;
-    u.maxHp = s.hp * factor + (u.kind === 'hero' && p.items.armor ? 220 : 0);
-    u.hp = u.maxHp * ratio; u.damage = s.damage * factor + (u.kind === 'hero' && p.items.sword ? 18 : 0);
+    const troop = u.kind !== 'hero' && u.kind !== 'base';
+    u.maxHp = s.hp * factor * (u.kind === 'hero' ? 1 + p.skills.resilience * 0.1 : troop ? 1 + p.skills.discipline * 0.05 : 1) + (u.kind === 'hero' && p.items.armor ? 220 : 0);
+    u.hp = u.maxHp * ratio;
+    u.damage = (s.damage * factor + (u.kind === 'hero' && p.items.sword ? 18 : 0)) * (u.kind === 'hero' ? 1 + p.skills.martial * 0.08 : troop ? 1 + p.skills.inspiration * 0.05 : 1);
+    u.cooldown = s.cooldown / (u.kind === 'hero' ? 1 + p.skills.martial * 0.05 : 1);
   }
 }
 export function progressHero(w: World, dt: number) {
@@ -24,10 +28,11 @@ export function progressHero(w: World, dt: number) {
       p.xp -= xpRequired(p.level); p.level++; changed = true;
     }
     if (changed) refreshStats(w, p.id);
+    grantLevelPoints(p);
     if (p.level === p.tier * 10) { p.bankedXP += p.xp; p.xp = 0; }
     p.mana = Math.min(RULES.hero.mana, p.mana + RULES.hero.manaRegen * dt);
-    p.cooldowns.rally = Math.max(0, p.cooldowns.rally - dt); p.cooldowns.wind = Math.max(0, p.cooldowns.wind - dt);
+    for (const ability of Object.keys(p.cooldowns) as (keyof typeof p.cooldowns)[]) p.cooldowns[ability] = Math.max(0, p.cooldowns[ability] - dt);
     const hero = w.units.find(u => u.team === p.id && u.kind === 'hero' && u.hp > 0);
-    if (hero) hero.hp = Math.min(hero.maxHp, hero.hp + RULES.hero.hpRegen * (distance(hero, MAP.bases[p.id]) < 12 ? 8 : 1) * dt);
+    if (hero) hero.hp = Math.min(hero.maxHp, hero.hp + (RULES.hero.hpRegen + p.skills.resilience) * (distance(hero, MAP.bases[p.id]) < 12 ? 8 : 1) * dt);
   }
 }
