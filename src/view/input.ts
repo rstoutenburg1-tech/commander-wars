@@ -48,11 +48,20 @@ export class Input {
     window.addEventListener('keydown', e => {
       if ((e.target as HTMLElement).matches('input,select,textarea')) return;
       const k = e.key.toLowerCase();
+      if (/^[1-4]$/.test(k)) {
+        e.preventDefault(); const index = Number(k) - 1;
+        if (e.ctrlKey) this.assignRegiment(index); else this.selectRegiment(index);
+      }
       if (['w', 'a', 's', 'd'].includes(k)) view.keys.add(k);
       if (k === 'x') this.attackMove = true;
       if (k === 'h') command(w, this.selected, 'hold');
+      if (k === 't') command(w, this.selected, 'retreat');
+      if (k === 'f') {
+        const ids = new Set([...this.selected].filter(id => w.units.find(u => u.id === id)?.kind !== 'hero'));
+        command(w, ids, 'follow');
+      }
       if (k === 'f1') { e.preventDefault(); this.selectHero(); }
-      if (k === ' ') { e.preventDefault(); const hero = w.units.find(u => u.team === 0 && u.kind === 'hero'); if (hero) view.center(hero); }
+      if (k === ' ') { e.preventDefault(); const hero = w.units.find(u => u.team === 0 && u.kind === 'hero'); if (hero) { view.zoom = 45; view.center(hero); view.resize(); } }
       if (k === 'tab') { e.preventDefault(); this.selectArmy(); }
       if (k === 'escape') { this.attackMove = false; this.selected.clear(); }
       if (!e.repeat) this.onKey(k);
@@ -62,4 +71,13 @@ export class Input {
   }
   selectHero() { this.selected.clear(); const u = this.w.units.find(u => u.team === 0 && u.kind === 'hero'); if (u) this.selected.add(u.id); }
   selectArmy() { this.selected.clear(); this.w.units.filter(u => u.team === 0 && u.kind !== 'base').forEach(u => this.selected.add(u.id)); }
+  selectRegiment(index: number) { this.selected.clear(); this.w.units.filter(u => u.team === 0 && u.regiment === index && u.kind !== 'hero' && u.kind !== 'base').forEach(u => this.selected.add(u.id)); }
+  assignRegiment(index: number) {
+    const troops = this.w.units.filter(u => this.selected.has(u.id) && u.team === 0 && u.kind !== 'hero' && u.kind !== 'base');
+    if (!troops.length) return;
+    for (const u of troops) { u.regiment = index; u.tactical = false; u.target = undefined; }
+    const r = this.w.regiments.find(r => r.team === 0 && r.index === index)!;
+    r.anchor = { x: troops.reduce((s, u) => s + u.x, 0) / troops.length, z: troops.reduce((s, u) => s + u.z, 0) / troops.length };
+    r.goal = { ...r.anchor }; r.movement = 'hold';
+  }
 }

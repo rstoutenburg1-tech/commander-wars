@@ -56,4 +56,23 @@ export const UPGRADES: Record<Building, Record<number, Upgrade>> = {
   },
 };
 export const ranks = ['Captain', 'Commander', 'General'];
+export const FORMATIONS = {
+  line: { name: 'Battle line', speed: 1, spacing: 1.9, frontalReduction: 0.1 },
+  wall: { name: 'Shield wall', speed: 0.65, spacing: 1.55, frontalReduction: 0.48 },
+  wedge: { name: 'Cavalry wedge', speed: 1.12, spacing: 2.1, frontalReduction: 0 },
+};
+export const DOCTRINE = {
+  aggressive: { aggro: 13, leash: 16 }, defensive: { aggro: 7, leash: 8 }, charge: { aggro: 18, leash: 22 },
+};
+export const COHESION = { casualtyLoss: 8, heroDeathLoss: 35, chargeLoss: 22, recovery: 2.5, separationLoss: 2, separationDistance: 7 };
+export const ABILITIES = {
+  rally: { name: 'Rally', cost: 45, cooldown: 24, duration: 10, radius: 16, attackSpeed: 1.4, movement: 1.25, cohesion: 30 },
+  wind: { name: 'Second Wind', cost: 40, cooldown: 22, heal: 0.3 },
+};
+export const BOSS = { smashInterval: 6, smashRadius: 8, smashDamage: 115, gold: 650, ore: 100 };
+export const ITEMS = {
+  sword: { name: 'Longsword', cost: { gold: 0, wood: 40, ore: 35 }, sell: 100, craftTime: 5 },
+  armor: { name: 'Reinforced armor', cost: { gold: 90, wood: 0, ore: 50 }, sell: 130, craftTime: 5 },
+  potion: { name: 'Healing draught', buy: 90, heal: 0.4 },
+};
 export const troopKinds: TroopKind[] = ['footman', 'archer', 'musketeer', 'knight'];

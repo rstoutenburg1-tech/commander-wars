@@ -5,6 +5,7 @@ import { RULES } from './game/config';
 import { Battlefield } from './view/battlefield';
 import { Input } from './view/input';
 import { HUD } from './ui/hud';
+import { Minimap } from './ui/minimap';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <header><div><strong>COMMANDER WARS</strong><span class="muted">MECHANICS PROTOTYPE</span></div><div id="resources"></div><button id="pause">Pause</button></header>
@@ -14,6 +15,8 @@ const w = createWorld();
 const view = new Battlefield(document.querySelector('#battlefield')!);
 const input = new Input(w, view);
 const hud = new HUD(w, input, view);
+const minimap = new Minimap(w, view);
+if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { commanderWars: { world: w, input, view, step, hud } });
 let last = performance.now(), accumulator = 0, uiTime = 0;
 function frame(now: number) {
   const elapsed = Math.min((now - last) / 1000, 0.1); last = now;
@@ -23,6 +26,7 @@ function frame(now: number) {
   if ((uiTime += elapsed) > 0.15) {
     uiTime = 0;
     hud.update();
+    minimap.update();
   }
   requestAnimationFrame(frame);
 }

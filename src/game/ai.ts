@@ -2,6 +2,8 @@ import { MAP, RULES } from './config';
 import type { World } from './types';
 import { distance } from './math';
 import { startUpgrade } from './economy';
+import { cast } from './abilities';
+import { commandRegiment } from './commands';
 export function stepAI(w: World, dt: number) {
   if (!w.aiEnabled) return;
   for (const p of w.players.slice(1)) {
@@ -26,12 +28,17 @@ export function stepAI(w: World, dt: number) {
     // Stable team tie-break prevents all three AIs opening on the human.
     const target = threat ?? bases.find(base => base.team === (p.id + 1) % 4) ?? bases[0];
     const retreat = hero && hero.hp < hero.maxHp * RULES.ai.retreatHp;
-    if (retreat) hero.hp = Math.min(hero.maxHp, hero.hp + 10);
+    if (hero && hero.hp < hero.maxHp * 0.7) cast(w, p.id, 'wind');
+    if (hero && w.units.some(u => u.team !== p.id && u.kind !== 'base' && distance(u, hero) < 12)) cast(w, p.id, 'rally');
     const ready = w.time >= RULES.ai.firstAttack && army.length >= RULES.ai.minAttackArmy;
-    const goal = retreat ? { x: b.x * 0.9, z: b.z * 0.9 } : threat || ready ? target : undefined;
+    const rallyPoint = { x: p.id === 1 ? -10 : 0, z: p.id === 3 ? 10 : -4 };
+    const goal = retreat ? { x: b.x * 0.9, z: b.z * 0.9 } : threat ? target : ready ? w.time < 120 ? rallyPoint : target : undefined;
     p.aiState = retreat ? 'Recover' : threat ? 'Defend' : ready ? 'Attack' : 'Muster';
     if (!goal) continue;
-    for (const u of army) { u.order = retreat ? 'retreat' : 'advance'; u.target = undefined; u.goal = { x: goal.x + (u.id % 4 - 1.5) * 1.8, z: goal.z + Math.floor(u.id % 8 / 4) * 1.8 }; }
-    for (const r of w.regiments.filter(r => r.team === p.id)) { r.movement = retreat ? 'retreat' : 'advance'; r.goal = { x: goal.x, z: goal.z }; }
+    if (hero) { hero.order = retreat ? 'retreat' : 'advance'; hero.target = undefined; hero.goal = { x: goal.x, z: goal.z }; }
+    for (const r of w.regiments.filter(r => r.team === p.id)) {
+      r.formation = p.barracks >= 3 ? 'wedge' : threat ? 'wall' : 'line'; r.engagement = p.barracks >= 3 ? 'charge' : 'aggressive';
+      commandRegiment(w, p.id, r.index, retreat ? 'retreat' : 'advance', goal);
+    }
   }
 }

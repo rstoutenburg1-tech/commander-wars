@@ -34,7 +34,7 @@ export function stepEconomy(w: World, dt: number) {
       job.remaining -= dt;
       if (job.remaining > 0) continue;
       if (job.building === 'base') {
-        p.tier = job.to; p.level = Math.max(p.level, levelFloor(p.tier)); refreshStats(w, p.id);
+        p.tier = job.to; p.level = Math.max(p.level, levelFloor(p.tier)); p.xp += p.bankedXP; p.bankedXP = 0; refreshStats(w, p.id);
       } else p[job.building] = job.to;
       if (p.id === 0) notify(w, `${job.building === 'crafting' ? 'Workshop' : job.building} level ${job.to} ready.`);
     }

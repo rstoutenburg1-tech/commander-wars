@@ -9,9 +9,9 @@ export class Battlefield {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.OrthographicCamera(-50, 50, 40, -40, 0.1, 250);
   readonly canvas = this.renderer.domElement;
-  readonly focus = new THREE.Vector3(-20, 0, 20);
+  readonly focus = new THREE.Vector3(-18, 0, 18);
   readonly keys = new Set<string>();
-  zoom = 85;
+  zoom = 45;
   private ray = new THREE.Raycaster();
   private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private views = new Map<number, UnitView>();
