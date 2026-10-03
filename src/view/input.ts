@@ -1,4 +1,5 @@
 import type { World } from '../game/types';
+import { MAP } from '../game/config';
 import { command } from '../game/commands';
 import type { Battlefield } from './battlefield';
 export class Input {
@@ -44,7 +45,7 @@ export class Input {
         if (id !== undefined && w.units.find(u => u.id === id)?.team === 0) this.selected.add(id);
       }
     });
-    view.canvas.addEventListener('wheel', e => { e.preventDefault(); view.zoom = Math.max(25, Math.min(145, view.zoom + e.deltaY * 0.06)); view.resize(); }, { passive: false });
+    view.canvas.addEventListener('wheel', e => { e.preventDefault(); view.zoom = Math.max(25, Math.min(MAP.overviewZoom, view.zoom + e.deltaY * 0.08)); view.resize(); }, { passive: false });
     window.addEventListener('keydown', e => {
       if ((e.target as HTMLElement).matches('input,select,textarea')) return;
       const k = e.key.toLowerCase();

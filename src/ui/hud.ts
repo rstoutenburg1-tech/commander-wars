@@ -1,4 +1,4 @@
-import { RULES, ranks, troopKinds, STATS, UPGRADES, TEAMS, FORMATIONS, ABILITIES, ITEMS, type Building } from '../game/config';
+import { MAP, RULES, ranks, troopKinds, STATS, UPGRADES, TEAMS, FORMATIONS, ABILITIES, ITEMS, type Building } from '../game/config';
 import { startUpgrade, buildingLevel, cycleCost, unlocked, upgradeReason } from '../game/economy';
 import { command, commandRegiment } from '../game/commands';
 import { cast } from '../game/abilities';
@@ -85,7 +85,7 @@ export class HUD {
       const other = troopKinds.filter(k => k !== kind).reduce((s, k) => s + p.production.counts[k], 0);
       p.production.counts[kind] = Math.max(0, Math.min(RULES.maxCycleUnits - other, Math.floor(Number(field.value) || 0))); field.value = String(p.production.counts[kind]);
     }));
-    document.addEventListener('keydown', e => { if (e.key === 'Home' && !(e.target as HTMLElement).matches('input,select')) { e.preventDefault(); view.zoom = 105; view.center({ x: 0, z: 0 }); view.resize(); } });
+    document.addEventListener('keydown', e => { if (e.key === 'Home' && !(e.target as HTMLElement).matches('input,select')) { e.preventDefault(); view.zoom = MAP.overviewZoom; view.center({ x: 0, z: 0 }); view.resize(); } });
     this.update();
   }
   private debug(action: string) {

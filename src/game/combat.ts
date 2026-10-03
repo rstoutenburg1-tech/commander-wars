@@ -4,6 +4,7 @@ import type { World, Unit } from './types';
 import { notify, spawn } from './world';
 import { levelFloor, refreshStats } from './hero';
 import { inSafeZone } from './objectives';
+import { moveOnMap, walkable, projectWalkable } from './navigation';
 export function damageUnit(w: World, victim: Unit, attacker: Unit, amount: number) {
   if (victim.hp <= 0 || inSafeZone(victim) || inSafeZone(attacker) || w.invulnerable && victim.team === 0) return;
   const r = w.regiments.find(r => r.team === victim.team && r.index === victim.regiment);
@@ -86,7 +87,7 @@ export function stepCombat(w: World, dt: number) {
       u.facing = distance(u, goal) > 0.1 ? Math.atan2(goal.x - u.x, goal.z - u.z) : r?.facing ?? u.facing;
       const speed = u.speed * (r && !u.tactical ? FORMATIONS[r.formation].speed : 1) * (rally ? ABILITIES.rally.movement : 1) * (u.order === 'retreat' ? 1.15 : 1);
       u.travel = Math.min(12, u.travel + Math.min(distance(u, goal), speed * dt));
-      moveToward(u, goal, speed * dt);
+      moveOnMap(u, goal, speed * dt);
       if (u.kind !== 'hero' && distance(u, MAP.merchant) < MAP.merchant.radius + STATS[u.kind].radius) {
         const angle = Math.atan2(u.z - MAP.merchant.z, u.x - MAP.merchant.x);
         u.x = MAP.merchant.x + Math.cos(angle) * (MAP.merchant.radius + STATS[u.kind].radius);
@@ -95,6 +96,7 @@ export function stepCombat(w: World, dt: number) {
       u.x = clamp(u.x, -MAP.half + 1, MAP.half - 1); u.z = clamp(u.z, -MAP.half + 1, MAP.half - 1);
     }
   }
+  for (const u of living) if (u.hp > 0 && !walkable(u)) Object.assign(u, projectWalkable(u));
   // Small local separation keeps units readable while allowing loose formation slots.
   for (let i = 0; i < living.length; i++) for (let j = i + 1; j < living.length; j++) {
     const a = living[i], b = living[j];
@@ -111,7 +113,7 @@ export function stepCombat(w: World, dt: number) {
     if (p.eliminated) continue;
     if (p.respawn > 0) {
       p.respawn -= dt;
-      if (p.respawn <= 0) spawn(w, p.id, 'hero', { x: MAP.bases[p.id].x * 0.82, z: MAP.bases[p.id].z * 0.82 });
+      if (p.respawn <= 0) spawn(w, p.id, 'hero', { x: MAP.bases[p.id].x * 0.92, z: MAP.bases[p.id].z * 0.92 });
     }
   }
 }

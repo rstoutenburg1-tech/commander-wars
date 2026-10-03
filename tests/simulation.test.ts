@@ -9,14 +9,15 @@ import { command, commandRegiment } from '../src/game/commands.ts';
 import { formationSlot, stepRegiments } from '../src/game/formations.ts';
 import { cast } from '../src/game/abilities.ts';
 import { merchant, startCraft, stepObjectives, inSafeZone } from '../src/game/objectives.ts';
-import { MAP } from '../src/game/config.ts';
+import { MAP, RULES, STATS, BOSS } from '../src/game/config.ts';
+import { route, walkable, moveOnMap } from '../src/game/navigation.ts';
 
 test('automatic spawning pays for each unit, respects reserve, never creates debt', () => {
   const w = createWorld(), p = w.players[0];
   p.gold = 60; p.production.reserve = 50; p.production.timer = 0; stepEconomy(w, 0.05);
-  assert.equal(w.units.filter(u => u.team === 0 && u.kind === 'footman').length, 8); assert.ok(p.gold >= 50);
+  assert.equal(w.units.filter(u => u.team === 0 && u.kind === 'footman').length, RULES.startingFootmen); assert.ok(p.gold >= 50);
   p.gold = 90; p.production.timer = 0; stepEconomy(w, 0.05);
-  assert.equal(w.units.filter(u => u.team === 0 && u.kind === 'footman').length, 10); assert.ok(p.gold >= 50);
+  assert.equal(w.units.filter(u => u.team === 0 && u.kind === 'footman').length, RULES.startingFootmen + 2); assert.ok(p.gold >= 50);
 });
 test('upgrades charge once, remain at previous level until timer expires', () => {
   const w = createWorld(), p = w.players[0]; const before = p.gold;
@@ -30,7 +31,7 @@ test('roster changes affect only future units and require barracks unlock', () =
   p.production.timer = 0; stepEconomy(w, 0.05); assert.equal(w.units.some(u => u.team === 0 && u.kind === 'archer'), false);
   p.tier = 2; p.barracks = 2; p.production.timer = 0; stepEconomy(w, 0.05);
   assert.equal(w.units.filter(u => u.team === 0 && u.kind === 'archer').length, 2);
-  assert.equal(w.units.filter(u => u.team === 0 && u.kind === 'footman').length, 8);
+  assert.equal(w.units.filter(u => u.team === 0 && u.kind === 'footman').length, RULES.startingFootmen);
 });
 test('XP banks at cap and commander death respects tier minimum', () => {
   const w = createWorld(), p = w.players[0]; p.level = 10; p.xp = 5000; progressHero(w, 0.05);
@@ -65,8 +66,8 @@ test('shield wall protection depends on frontage and cohesion', () => {
 test('regiment movement follows hero while individual orders remain independent', () => {
   const w = createWorld(), hero = w.units.find(u => u.team === 0 && u.kind === 'hero')!;
   hero.x = 0; hero.z = 0; hero.facing = 0;
-  commandRegiment(w, 0, 0, 'follow'); stepRegiments(w, 20);
-  assert.ok(Math.abs(w.regiments[0].anchor.z + 5) < 0.1);
+  commandRegiment(w, 0, 0, 'follow'); for (let i = 0; i < 1800; i++) stepRegiments(w, 0.05);
+  assert.ok(Math.hypot(w.regiments[0].anchor.x, w.regiments[0].anchor.z + 5) < 0.6);
   const troop = w.units.find(u => u.team === 0 && u.kind === 'footman')!;
   command(w, new Set([troop.id]), 'move', { x: 20, z: 20 }); stepRegiments(w, 0.1);
   assert.equal(troop.tactical, true); assert.equal(troop.goal.x, 20);
@@ -89,18 +90,18 @@ test('mana and cooldowns gate abilities, Rally restores cohesion', () => {
 });
 test('merchant blocks combat, allows trade, and heroes can leave the safe zone', () => {
   const w = createWorld(), hero = w.units.find(u => u.team === 0 && u.kind === 'hero')!, enemy = w.units.find(u => u.team === 1 && u.kind === 'hero')!;
-  hero.x = MAP.merchant.x; hero.z = MAP.merchant.z; hero.goal = { x: 0, z: 0 }; hero.order = 'move';
+  hero.x = MAP.merchant.x; hero.z = MAP.merchant.z; hero.goal = { x: MAP.merchant.x, z: MAP.merchant.z + 20 }; hero.order = 'move';
   hero.hp = 300; enemy.x = 2; enemy.z = MAP.merchant.z;
   damageUnit(w, hero, enemy, 100); assert.equal(hero.hp, 300);
   const gold = w.players[0].gold; assert.equal(merchant(w, 'buy'), true); assert.equal(w.players[0].gold, gold - 90);
-  stepCombat(w, 1); assert.equal(inSafeZone(hero), false);
+  stepCombat(w, 3); assert.equal(inSafeZone(hero), false);
 });
 test('crafting requires workshop, charges once, equips after five seconds', () => {
   const w = createWorld(), p = w.players[0]; p.wood = 100; p.ore = 100;
   assert.equal(startCraft(w, 0, 'sword'), false); p.crafting = 1;
   assert.equal(startCraft(w, 0, 'sword'), true); assert.equal(startCraft(w, 0, 'armor'), false);
   stepObjectives(w, 4); assert.equal(p.items.sword, false); stepObjectives(w, 1.1); assert.equal(p.items.sword, true);
-  assert.ok(w.units.find(u => u.team === 0 && u.kind === 'hero')!.damage > 38);
+  assert.ok(w.units.find(u => u.team === 0 && u.kind === 'hero')!.damage > STATS.hero.damage);
 });
 test('commander respawns with equipment and death penalty remains after next tick', () => {
   const w = createWorld(), p = w.players[0], hero = w.units.find(u => u.team === 0 && u.kind === 'hero')!, enemy = w.units.find(u => u.team === 1 && u.kind === 'hero')!;
@@ -108,10 +109,22 @@ test('commander respawns with equipment and death penalty remains after next tic
   kill(w, hero, enemy); progressHero(w, 0.05); assert.equal(p.level, 6);
   for (let i = 0; i < 250; i++) step(w, 0.05);
   const respawn = w.units.find(u => u.team === 0 && u.kind === 'hero')!;
-  assert.ok(respawn); assert.notEqual(respawn.id, hero.id); assert.ok(respawn.damage > 38);
+  assert.ok(respawn); assert.notEqual(respawn.id, hero.id); assert.ok(respawn.damage > STATS.hero.damage);
 });
 test('boss is present, uses damaging AOE and grants a substantial kill reward', () => {
   const w = createWorld(), boss = w.units.find(u => u.kind === 'boss')!, hero = w.units.find(u => u.team === 0 && u.kind === 'hero')!;
-  hero.x = boss.x + 4; hero.z = boss.z; const before = hero.hp; stepObjectives(w, 6.1); assert.ok(hero.hp < before);
+  hero.x = boss.x + 4; hero.z = boss.z; const before = hero.hp; stepObjectives(w, BOSS.smashInterval + 0.1); assert.ok(hero.hp < before);
   const gold = w.players[0].gold; damageUnit(w, boss, hero, 10000); assert.equal(boss.hp <= 0, true); assert.equal(w.players[0].gold, gold + 650);
+});
+test('adjacent corner routes go through the arena and never cross the ravines', () => {
+  const a = { ...MAP.bases[0] }, b = { ...MAP.bases[1] }, path = route(a, b);
+  assert.ok(path.length > 1); assert.equal(walkable({ x: -96, z: 0 }), false);
+  for (let i = 0; i < 4000 && Math.hypot(a.x - b.x, a.z - b.z) > 0.5; i++) { moveOnMap(a, b, 0.1); assert.ok(walkable(a)); }
+  assert.ok(Math.hypot(a.x - b.x, a.z - b.z) < 0.5);
+});
+test('AI opening leaves two minutes to set up and troop duels are slower', () => {
+  const w = createWorld(); for (let i = 0; i < 2400; i++) step(w, 0.05);
+  assert.ok(w.players.every(p => !p.eliminated));
+  assert.ok(w.units.filter(u => u.kind === 'hero' && u.team > 0).every(u => Math.hypot(u.x - MAP.bases[u.team].x, u.z - MAP.bases[u.team].z) < 30));
+  assert.ok(STATS.footman.hp / (STATS.footman.damage / STATS.footman.cooldown) > 30);
 });

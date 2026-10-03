@@ -14,7 +14,7 @@ export function stepAI(w: World, dt: number) {
     if (!p.forest) startUpgrade(w, p.id, 'forest');
     if (!p.quarry) startUpgrade(w, p.id, 'quarry');
     if (!p.crafting) startUpgrade(w, p.id, 'crafting');
-    p.production.interval = p.gold < 120 || p.upgrades.some(j => j.building === 'base') ? 20 : 10;
+    p.production.interval = p.gold < 120 || p.upgrades.some(j => j.building === 'base') ? 30 : RULES.spawnInterval;
     p.production.reserve = 90;
     if (p.barracks < p.tier) startUpgrade(w, p.id, 'barracks');
     else if (p.tier < 3 && w.time > p.tier * 75) startUpgrade(w, p.id, 'base');
@@ -32,7 +32,7 @@ export function stepAI(w: World, dt: number) {
     if (hero && w.units.some(u => u.team !== p.id && u.kind !== 'base' && distance(u, hero) < 12)) cast(w, p.id, 'rally');
     const ready = w.time >= RULES.ai.firstAttack && army.length >= RULES.ai.minAttackArmy;
     const rallyPoint = { x: p.id === 1 ? -10 : 0, z: p.id === 3 ? 10 : -4 };
-    const goal = retreat ? { x: b.x * 0.9, z: b.z * 0.9 } : threat ? target : ready ? w.time < 120 ? rallyPoint : target : undefined;
+    const goal = retreat ? { x: b.x * 0.9, z: b.z * 0.9 } : threat ? target : ready ? w.time < RULES.ai.baseAssault ? rallyPoint : target : undefined;
     p.aiState = retreat ? 'Recover' : threat ? 'Defend' : ready ? 'Attack' : 'Muster';
     if (!goal) continue;
     if (hero) { hero.order = retreat ? 'retreat' : 'advance'; hero.target = undefined; hero.goal = { x: goal.x, z: goal.z }; }

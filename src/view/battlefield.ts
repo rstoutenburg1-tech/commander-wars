@@ -7,9 +7,9 @@ interface UnitView { root: THREE.Group; ring: THREE.Mesh; bar: THREE.Group; fill
 export class Battlefield {
   readonly renderer = new THREE.WebGLRenderer({ antialias: true });
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.OrthographicCamera(-50, 50, 40, -40, 0.1, 250);
+  readonly camera = new THREE.OrthographicCamera(-50, 50, 40, -40, 0.1, 600);
   readonly canvas = this.renderer.domElement;
-  readonly focus = new THREE.Vector3(-18, 0, 18);
+  readonly focus = new THREE.Vector3(-84, 0, 88);
   readonly keys = new Set<string>();
   zoom = 45;
   private ray = new THREE.Raycaster();
@@ -26,7 +26,6 @@ export class Battlefield {
   constructor(private container: HTMLElement) {
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     this.renderer.setClearColor('#202e35');
-    this.scene.fog = new THREE.Fog('#202e35', 150, 230);
     this.scene.add(new THREE.HemisphereLight('#d2f1fa', '#405a40', 2.3));
     const sun = new THREE.DirectionalLight('#ffe4b4', 2.6); sun.position.set(-25, 60, 30); this.scene.add(sun);
     container.append(this.canvas);
@@ -51,12 +50,12 @@ export class Battlefield {
     sprite.position.set(x, y, z); sprite.scale.set(15, 1.875, 1); this.scene.add(sprite);
   }
   private createMap() {
-    this.shape(this.scene, this.cube, '#536647', [0, -0.6, 0], [MAP.half * 2, 1, MAP.half * 2]);
-    this.shape(this.scene, this.cylinder, '#687157', [0, -0.04, 0], [24, 0.12, 24]);
-    const grid = new THREE.GridHelper(116, 29, '#718267', '#627653'); grid.position.y = 0.03; this.scene.add(grid);
+    this.shape(this.scene, this.cube, '#253c40', [0, -1, 0], [MAP.half * 2, 1, MAP.half * 2]);
+    this.shape(this.scene, this.cube, '#73816b', [0, -0.04, 0], [MAP.arenaHalf * 2, 0.2, MAP.arenaHalf * 2]);
+    const grid = new THREE.GridHelper(MAP.arenaHalf * 2, 20, '#8c9783', '#7c8a72'); grid.position.y = 0.08; this.scene.add(grid);
     MAP.bases.forEach((b, i) => {
-      this.shape(this.scene, this.cube, '#707462', [b.x, 0, b.z], [22, 0.13, 22]);
-      const path = this.shape(this.scene, this.cube, '#858269', [b.x / 2, 0.04, b.z / 2], [8, 0.08, 60]);
+      this.shape(this.scene, this.cube, '#536647', [b.x, -0.05, b.z], [MAP.baseHalf * 2, 0.2, MAP.baseHalf * 2]);
+      const path = this.shape(this.scene, this.cube, '#858269', [b.x / 2, 0.03, b.z / 2], [MAP.laneWidth, 0.12, Math.hypot(b.x, b.z)]);
       path.rotation.y = b.x * b.z > 0 ? Math.PI / 4 : -Math.PI / 4;
       this.label(`${TEAMS[i].name.toUpperCase()} KEEP`, b.x, b.z + 7, 1);
       for (let j = 0; j < 6; j++) {
@@ -70,11 +69,11 @@ export class Battlefield {
       this.shape(this.scene, this.cone, TEAMS[i].color, [b.x - Math.sign(b.x) * 8, 3, b.z], [3, 2, 3]);
     });
     this.shape(this.scene, this.cylinder, '#6a897a', [MAP.merchant.x, 0.12, MAP.merchant.z], [MAP.merchant.radius, 0.2, MAP.merchant.radius]);
-    this.shape(this.scene, this.cube, '#ac9266', [0, 1, MAP.merchant.z], [3.5, 2, 2.5]);
-    this.shape(this.scene, this.cone, '#e0cb8d', [0, 3, MAP.merchant.z], [3.5, 2, 3.5]);
-    this.label('MERCHANT · SAFE', 0, MAP.merchant.z - 4, 2);
-    this.shape(this.scene, this.cylinder, '#776859', [MAP.boss.x, 0.1, MAP.boss.z], [7, 0.2, 7]);
-    this.label('IRON GOLEM · CONTESTED', MAP.boss.x, MAP.boss.z + 8, 1);
+    this.shape(this.scene, this.cube, '#ac9266', [MAP.merchant.x, 1, MAP.merchant.z], [5, 2, 4]);
+    this.shape(this.scene, this.cone, '#e0cb8d', [MAP.merchant.x, 3, MAP.merchant.z], [5, 2, 5]);
+    this.label('MERCHANT · SAFE', MAP.merchant.x, MAP.merchant.z - 6, 2);
+    this.shape(this.scene, this.cylinder, '#776859', [MAP.boss.x, 0.1, MAP.boss.z], [MAP.boss.radius, 0.2, MAP.boss.radius]);
+    this.label('BOSS ARENA · CONTESTED', MAP.boss.x, MAP.boss.z + MAP.boss.radius - 2, 1);
   }
   resize() {
     const { width, height } = this.container.getBoundingClientRect();
@@ -94,14 +93,14 @@ export class Battlefield {
     if (this.keys.has('s')) this.focus.z += step;
     if (this.keys.has('a')) this.focus.x -= step;
     if (this.keys.has('d')) this.focus.x += step;
-    this.focus.x = clamp(this.focus.x, -50, 50); this.focus.z = clamp(this.focus.z, -50, 50);
+    this.focus.x = clamp(this.focus.x, -MAP.half, MAP.half); this.focus.z = clamp(this.focus.z, -MAP.half, MAP.half);
     this.updateCamera();
   }
   center(p: Point) { this.focus.set(p.x, 0, p.z); this.updateCamera(); }
   ground(clientX: number, clientY: number): Point | null {
     this.setRay(clientX, clientY);
     const point = this.ray.ray.intersectPlane(this.plane, new THREE.Vector3());
-    return point ? { x: clamp(point.x, -57, 57), z: clamp(point.z, -57, 57) } : null;
+    return point ? { x: clamp(point.x, -MAP.half, MAP.half), z: clamp(point.z, -MAP.half, MAP.half) } : null;
   }
   private setRay(x: number, y: number) {
     const r = this.canvas.getBoundingClientRect();

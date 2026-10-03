@@ -9,12 +9,15 @@ export class Minimap {
     this.c = this.canvas.getContext('2d')!; document.querySelector('#battlefield')!.append(this.canvas);
     this.canvas.addEventListener('pointerdown', e => {
       const rect = this.canvas.getBoundingClientRect();
-      view.center({ x: (e.clientX - rect.left) / rect.width * 116 - 58, z: (e.clientY - rect.top) / rect.height * 116 - 58 });
+      view.center({ x: (e.clientX - rect.left) / rect.width * MAP.half * 2 - MAP.half, z: (e.clientY - rect.top) / rect.height * MAP.half * 2 - MAP.half });
     });
   }
   update() {
-    const c = this.c; c.fillStyle = '#263e35'; c.fillRect(0, 0, 160, 160);
+    const c = this.c; c.fillStyle = '#253c40'; c.fillRect(0, 0, 160, 160);
     const map = (n: number) => (n + MAP.half) / (MAP.half * 2) * 160;
+    c.fillStyle = '#536647';
+    c.fillRect(map(-MAP.arenaHalf), map(-MAP.arenaHalf), MAP.arenaHalf / MAP.half * 160, MAP.arenaHalf / MAP.half * 160);
+    for (const b of MAP.bases) c.fillRect(map(b.x - MAP.baseHalf), map(b.z - MAP.baseHalf), MAP.baseHalf / MAP.half * 160, MAP.baseHalf / MAP.half * 160);
     c.strokeStyle = '#687863'; c.lineWidth = 7;
     c.beginPath(); c.moveTo(20, 20); c.lineTo(140, 140); c.moveTo(140, 20); c.lineTo(20, 140); c.stroke();
     c.strokeStyle = '#a3c5b2'; c.lineWidth = 1; c.beginPath(); c.arc(map(0), map(MAP.merchant.z), 6, 0, Math.PI * 2); c.stroke();

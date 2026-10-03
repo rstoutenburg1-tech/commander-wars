@@ -1,6 +1,7 @@
 import { COHESION, FORMATIONS, MAP, STATS, ABILITIES } from './config';
 import { distance, moveToward, clamp } from './math';
 import type { Formation, Point, World } from './types';
+import { moveOnMap, projectWalkable } from './navigation';
 export function formationSlot(formation: Formation, i: number, n: number, facing: number): Point {
   const spacing = FORMATIONS[formation].spacing;
   let side: number, back: number;
@@ -30,12 +31,12 @@ export function stepRegiments(w: World, dt: number) {
       r.facing = Math.atan2(goal.x - r.anchor.x, goal.z - r.anchor.z);
       const rally = hero && w.players[r.team].rallyUntil > w.time && distance(hero, r.anchor) < ABILITIES.rally.radius;
       const speed = Math.min(...troops.map(u => u.speed)) * FORMATIONS[r.formation].speed * (rally ? ABILITIES.rally.movement : 1);
-      moveToward(r.anchor, goal, speed * dt);
+      moveOnMap(r.anchor, goal, speed * dt);
     } else if (r.movement === 'follow' && hero) r.facing = hero.facing;
     let separated = 0;
     troops.forEach((u, i) => {
       const offset = formationSlot(r.formation, i, troops.length, r.facing);
-      u.goal = { x: clamp(r.anchor.x + offset.x, -55, 55), z: clamp(r.anchor.z + offset.z, -55, 55) };
+      u.goal = projectWalkable({ x: r.anchor.x + offset.x, z: r.anchor.z + offset.z });
       u.order = r.movement;
       if (distance(u, u.goal) > COHESION.separationDistance) separated++;
     });
