@@ -1,16 +1,23 @@
 import { MAP, RULES, STATS, type Kind } from './config';
 import type { World, Unit, Point } from './types';
+import { refreshStats } from './hero';
 export function spawn(w: World, team: number, kind: Kind, pos: Point, regiment = 0): Unit {
   const s = STATS[kind];
   const unit: Unit = { ...pos, id: w.nextId++, team, kind, hp: s.hp, maxHp: s.hp, damage: s.damage,
     speed: s.speed, range: s.range, cooldown: s.cooldown, attackTimer: 0,
-    order: 'hold', goal: { ...pos }, facing: 0, regiment };
-  w.units.push(unit); return unit;
+    order: 'hold', goal: { ...pos }, facing: 0, regiment, travel: 0 };
+  w.units.push(unit); refreshStats(w, team); return unit;
 }
 export function createWorld(): World {
-  const w: World = { time: 0, units: [], players: [], effects: [], events: ['Select your commander and right-click to move.'], nextId: 1, winner: null, paused: false };
+  const w: World = { time: 0, units: [], players: [], effects: [], events: ['Develop forest + quarry, build workshop, then advance to Tier II.'], nextId: 1, winner: null, paused: false,
+    regiments: [], aiEnabled: true, invulnerable: false, bossTimer: 0, merchantGold: 250 };
   MAP.bases.forEach((base, team) => {
-    w.players.push({ id: team, gold: RULES.startingGold, level: 1, xp: 0, respawn: 0, eliminated: false });
+    w.players.push({ id: team, gold: RULES.startingGold, wood: RULES.startingWood, ore: RULES.startingOre,
+      level: 1, xp: 0, respawn: 0, eliminated: false, tier: 1, barracks: 1, crafting: 0, goldmine: 1, forest: 0, quarry: 0,
+      upgrades: [], production: { interval: 10, counts: { footman: 4, archer: 0, musketeer: 0, knight: 0 }, reserve: 50, timer: 10, regiment: 0, status: 'Ready' },
+      mana: RULES.hero.mana, rallyUntil: 0, cooldowns: { rally: 0, wind: 0 }, aiTimer: 0, aiState: 'Muster' });
+    for (let index = 0; index < 4; index++) w.regiments.push({ team, index, formation: 'line', movement: 'hold', engagement: 'aggressive', priority: 'closest', cohesion: 100, facing: 0,
+      anchor: { x: base.x * 0.7, z: base.z * 0.7 }, goal: { x: base.x * 0.7, z: base.z * 0.7 } });
     spawn(w, team, 'base', base);
     spawn(w, team, 'hero', { x: base.x * 0.82, z: base.z * 0.82 });
     for (let i = 0; i < RULES.startingFootmen; i++) {

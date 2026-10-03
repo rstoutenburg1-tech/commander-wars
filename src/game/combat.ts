@@ -1,14 +1,17 @@
-import { STATS, MAP, TEAMS } from './config';
+import { STATS, MAP, TEAMS, RULES } from './config';
 import { distance, moveToward, clamp } from './math';
 import type { World, Unit } from './types';
 import { notify, spawn } from './world';
+import { levelFloor, refreshStats } from './hero';
 export function kill(w: World, victim: Unit, attacker: Unit) {
   victim.hp = 0;
   const p = w.players[attacker.team];
-  if (p && attacker.team !== victim.team) { p.gold += STATS[victim.kind].cost * 0.5; p.xp += STATS[victim.kind].xp; }
+  if (p && attacker.team !== victim.team) { p.gold += STATS[victim.kind].cost * RULES.killBounty; p.xp += STATS[victim.kind].xp; }
   if (victim.kind === 'hero') {
-    w.players[victim.team].respawn = 12;
-    notify(w, `${TEAMS[victim.team].name} commander fell. Respawning in 12s.`);
+    const owner = w.players[victim.team];
+    owner.respawn = RULES.hero.respawn[owner.tier - 1];
+    owner.level = Math.max(levelFloor(owner.tier), owner.level - RULES.hero.deathLevels); refreshStats(w, victim.team);
+    notify(w, `${TEAMS[victim.team].name} commander fell. Respawning in ${owner.respawn}s.`);
   }
   if (victim.kind === 'base') {
     w.players[victim.team].eliminated = true;
@@ -38,7 +41,7 @@ export function stepCombat(w: World, dt: number) {
     if (enemy && d <= u.range) {
       u.facing = Math.atan2(enemy.x - u.x, enemy.z - u.z);
       if (u.attackTimer === 0) {
-        enemy.hp -= u.damage * (u.kind === 'hero' && d < 2.5 ? 1.5 : 1);
+        if (!(w.invulnerable && enemy.team === 0)) enemy.hp -= u.damage * (u.kind === 'hero' && d < 2.5 ? 1.5 : 1);
         u.attackTimer = u.cooldown;
         w.effects.push({ x: u.x, z: u.z, to: { x: enemy.x, z: enemy.z }, color: TEAMS[u.team]?.color ?? '#ffc872', life: 0.2, radius: 0.3 });
         if (enemy.hp <= 0) kill(w, enemy, u);
@@ -57,6 +60,5 @@ export function stepCombat(w: World, dt: number) {
       p.respawn -= dt;
       if (p.respawn <= 0) spawn(w, p.id, 'hero', { x: MAP.bases[p.id].x * 0.82, z: MAP.bases[p.id].z * 0.82 });
     }
-    while (p.xp >= p.level * 40 && p.level < 10) { p.xp -= p.level * 40; p.level++; }
   }
 }
