@@ -24,7 +24,10 @@ export function cast(w: World, team: number, ability: keyof typeof ABILITIES) {
     for (const u of w.units) if (u.team === team && u.hp > 0 && isTroop(u.kind) && distance(u, hero) < ABILITIES.ultimate.radius) u.hp = Math.min(u.maxHp, u.hp + u.maxHp * 0.25);
     for (const r of w.regiments) if (r.team === team && distance(r.anchor, hero) < ABILITIES.ultimate.radius) r.cohesion = 100;
   }
-  w.effects.push({ x: hero.x, z: hero.z, life: 0.8, radius: ability === 'rally' ? ABILITIES.rally.radius : 3, color: ability === 'rally' ? '#ffe9a0' : '#8dfaab' });
+  const colors = { rally: '#ffdf65', wind: '#65efa1', cleave: '#ffbc65', warcry: '#fb7759', standfast: '#72cdff', ultimate: '#cc9eff' };
+  const duration = ability === 'cleave' ? 0.9 : 1.3;
+  const radius = ability === 'wind' ? 3 : ABILITIES[ability].radius;
+  w.effects.push({ x: hero.x, z: hero.z, life: duration, duration, radius, color: colors[ability], kind: ability, source: hero.id, height: hero.garrison !== undefined ? 6.5 : 0 });
   if (team === 0) notify(w, `${spec.name} activated · ${Math.floor(p.mana)} / ${maxMana(p)} mana.`);
   return true;
 }

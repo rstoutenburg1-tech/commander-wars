@@ -113,11 +113,15 @@ export function stepCombat(w: World, dt: number) {
         if (charge) {
           const defender = w.regiments.find(r => r.team === enemy!.team && r.index === enemy!.regiment);
           if (defender) defender.cohesion = clamp(defender.cohesion - COHESION.chargeLoss, 0, 100);
-          w.effects.push({ x: enemy.x, z: enemy.z, radius: 3, life: 0.4, color: '#ffd676' });
+          w.effects.push({ x: enemy.x, z: enemy.z, radius: 3, life: 0.5, duration: 0.5, color: '#ffd676', kind: 'charge', source: u.id, target: enemy.id });
         }
         u.travel = 0;
         u.attackTimer = u.cooldown / (rally ? ABILITIES.rally.attackSpeed + (w.players[u.team].skills.rally - 1) * 0.08 : 1);
-        w.effects.push({ x: u.x, z: u.z, to: { x: enemy.x, z: enemy.z }, color: TEAMS[u.team]?.color ?? '#ffc872', life: 0.2, radius: 0.3 });
+        const meleeAttack = u.kind === 'boss' || u.kind === 'footman' || u.kind === 'knight' || u.kind === 'hero' && u.garrison === undefined && (melee || d < 2.5);
+        const kind = meleeAttack ? 'melee' : u.kind === 'musketeer' ? 'shot' : 'arrow';
+        const duration = kind === 'arrow' ? 0.5 : 0.3;
+        w.effects.push({ x: u.x, z: u.z, to: { x: enemy.x, z: enemy.z }, color: TEAMS[u.team]?.color ?? '#ffc872', life: duration, duration, radius: 0.3, kind, source: u.id, target: enemy.id,
+          height: u.garrison !== undefined ? 6.5 : 0, toHeight: enemy.garrison !== undefined ? 6.5 : 0 });
       }
     } else if (u.speed > 0 && u.garrison === undefined) {
       const goal = u.kind === 'boss' ? enemy ?? MAP.boss : enemy && u.order !== 'hold' ? enemy : u.goal;

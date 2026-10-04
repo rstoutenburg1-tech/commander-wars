@@ -16,7 +16,7 @@ export const MAP = {
   half: 125, baseHalf: 26, arenaHalf: 50, laneWidth: 24, overviewZoom: 250,
   bases: [{ x: -96, z: 96 }, { x: -96, z: -96 }, { x: 96, z: -96 }, { x: 96, z: 96 }],
   merchant: { x: -34, z: -12, radius: 10 },
-  boss: { x: 23, z: 15, radius: 20 },
+  boss: { x: 0, z: 0, radius: 20 },
 };
 export const TEAMS = [
   { name: 'Azure', color: '#55d8db' }, { name: 'Crimson', color: '#ef6b68' },

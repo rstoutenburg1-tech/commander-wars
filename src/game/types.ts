@@ -6,7 +6,11 @@ export interface Unit extends Point {
   damage: number; meleeDamage: number; speed: number; range: number; cooldown: number; attackTimer: number;
   order: Order; goal: Point; target?: number; autoTarget?: number; facing: number; regiment: number; travel: number; tactical: boolean; garrison?: number;
 }
-export interface Effect extends Point { to?: Point; color: string; life: number; radius: number }
+export interface Effect extends Point {
+  to?: Point; color: string; life: number; radius: number; duration?: number;
+  kind?: 'melee' | 'arrow' | 'shot' | 'charge' | 'boss-warning' | 'boss-smash' | Ability;
+  source?: number; target?: number; height?: number; toHeight?: number;
+}
 export interface Player {
   id: number; gold: number; wood: number; ore: number; level: number; xp: number; respawn: number; eliminated: boolean;
   tier: number; barracks: number; crafting: number; goldmine: number; forest: number; quarry: number;
