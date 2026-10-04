@@ -1,6 +1,6 @@
 # Commander Wars
 
-A small single-player, four-corner fantasy RTS prototype. TypeScript, Three.js, Vite; geometric placeholder assets and no backend. Destroy the three AI keeps to win.
+A small single-player, four-corner fantasy RTS prototype. TypeScript, Three.js, Vite; original procedural cartoon art and no backend. Destroy the three AI keeps to win.
 
 ## Run
 
@@ -29,6 +29,8 @@ Open the local URL printed by Vite. `pnpm build` creates a static site in `dist`
 10. Paid destructible gates, ranged tower garrisons and captured-base construction/production.
 11. Middle mouse map panning.
 12. Immediate regiment orders, destination formations, reinforcement selection and simple hero escort commands.
+13. Centered, bounded boss arena and typed combat/spell animation events.
+14. Colorful village terrain, distinct troop/building models, animated combat and ability effects, and a fantasy game HUD.
 
 Each milestone is committed as a runnable state. This is a mechanics prototype, not a balanced release.
 
@@ -84,7 +86,9 @@ New orders replace movement immediately. Troops travel directly to formation slo
 
 Movement is slower, troops have roughly 50% more HP, attacks have longer intervals and keeps have 6,500 starting HP. AI begins advancing after 2:30 and starts proactive base assaults after 6:00; it still defends threatened bases. Resource income and default production are slower. These are provisional pacing changes.
 
-The boss stays within its marked arena and does not respawn; damage grants XP and the killing player gets the large reward. Merchant healing/mana draughts are consumed immediately. New equipment fills an empty slot automatically; use Items to swap or unequip it. Secondary buildings remain infrastructure sites; the keep and gate are the destructible objectives. Captured sites support one building of each available type and one construction job at a time. Local barracks shares the home roster instead of having a second roster editor. There is no multiplayer, saved campaign or final balance.
+The boss arena sits at the exact map center, equally distant from all four gated approaches. The boss stays within its marked arena and does not respawn; damage grants XP and the killing player gets the large reward. Merchant healing/mana draughts are consumed immediately. New equipment fills an empty slot automatically; use Items to swap or unequip it. Secondary buildings remain infrastructure sites; the keep and gate are the destructible objectives. Captured sites support one building of each available type and one construction job at a time. Local barracks shares the home roster instead of having a second roster editor. There is no multiplayer, saved campaign or final balance.
+
+The visual pass uses a bright, chunky village style inspired by Clash of Clans, with original procedural models. Shield infantry, bow archers, plumed musketeers, mounted knights, a crowned/caped hero and a stone golem have distinct silhouettes. Production sites, keeps, gates, the merchant and central arena use richer miniature scenery. Walking, weapon attacks, arrows, musket shots and charge impacts animate from simulation events. Rally banners, healing crosses, sweeping strike arcs, offensive war-cry bursts, protective shields and the ultimate each have distinct graphics. Boss smashes include a warning area before impact. These visuals do not delay the simulation's damage timing.
 
 The 10–20 minute match target is **not validated yet**. Test the control, economy and formation decisions before treating the numbers as balance. The full source specification is preserved in [docs/original-specification.md](docs/original-specification.md).
 
@@ -95,7 +99,7 @@ pnpm test
 pnpm build
 ```
 
-53 simulation/control tests cover production/reserves, construction, troop unlocks, hero progression/respawn, elimination, AI progress, formations, immediate replacement orders, destination arrival, partial selections, home/outpost reinforcement destinations, held positions, future escorts, abilities, merchant safety/prices/tomes, crafting tiers, equipment bonuses/swaps, hero melee/ranged damage, aura/marching, target retention/overrides/reacquisition, escort detachment, boss bounds/rewards, ravine routing, skill prerequisites, Tier IV, cursor controls, hotkeys, gate ownership/full-lane collision/fire blocking/breaches, tower costs/capacity/range/damage/protection/dismounting, captured ownership/local income and paid outpost waves with a shared cap.
+65 simulation/control tests cover production/reserves, construction, troop unlocks, hero progression/respawn, elimination, AI progress, formations, immediate replacement orders, destination arrival, partial selections, home/outpost reinforcement destinations, held positions, future escorts, abilities, merchant safety/prices/tomes, crafting tiers, equipment bonuses/swaps, hero melee/ranged damage, aura/marching, target retention/overrides/reacquisition, escort detachment, boss bounds/rewards/symmetry, ravine routing, skill prerequisites, Tier IV, cursor controls, hotkeys, gate ownership/full-lane collision/fire blocking/breaches, tower costs/capacity/range/damage/protection/dismounting, captured ownership/local income and paid outpost waves with a shared cap. Visual-event integration checks exercise all six spell types and expiry, real melee/arrow/musket attacks and cooldowns, charge impacts, elevated tower origins/targets and timed boss warnings/smashes.
 
 Browser checks also exercised right-click movement, abilities, doctrine controls, both tier upgrades, all roster unlocks, crafting/trading, a combat victory and restart. The victory check used a boosted developer commander to make the check short; it does not establish match balance.
 
@@ -106,6 +110,8 @@ Keyboard browser checks use actual keys for selection, assignment, cursor moveme
 Movement browser checks exercise a recruit spawning after number-key selection, immediate Enter orders, Ctrl assignment without order changes, F attachment, Shift+F/Tab F gathering, Tab H stopping only the hero/escorts, sidebar gather/stop buttons, empty regiment orders and all-army orders. Simulation checks verify first-tick movement direction and arrival in formation.
 
 Expansion browser checks exercise Tab progression, K keep-only controls, sidebar destinations, crafting/equip/unequip, paid training, merchant arrival/purchases/tomes/hotkeys, hero escort settings, regiment detachment, paid gate toggles, world gate selection, tower construction/garrison/keyboard dismount, combat gate breach and keep capture, all four local buildings, Regiment 9 outpost spawning and captured gate rebuilding. Combat capture uses a temporary damage boost and accelerated simulation; these checks validate functionality, not natural balance or match duration.
+
+Graphics browser checks cover the initial village, centered map overview, actual world selection of all six home buildings, melee/arrow/musket events, all six spell visuals, animated walking and frozen paused effects. They also render a populated 160-troop scene and check layouts at 1440×1000 and 1366×768. Shared primitives and vertex-color merging keep each animated pivot to one opaque draw call; the populated scene fell from about 4,983 to 1,652 draw calls during the visual pass. Frame-rate targets on player hardware have not been established.
 
 Balance lives in `src/game/config.ts`. Simulation systems are separate from rendering and UI. Add `?debug=1` to the URL to expose `window.commanderWars`. The **Match info & developer controls** section includes grants, promotion, roster spawning, AI/invulnerability toggles and simulation speed.
 
