@@ -2,7 +2,7 @@ import type { World, Unit, Formation } from '../game/types';
 import { ABILITIES, MAP, RULES, type Ability, type Building } from '../game/config';
 import { command } from '../game/commands';
 import { ABILITY_KEYS, advanceCursor, bindAbility, learnedAbilities, syncAbilityBindings, type AbilityBindings } from '../game/hotkeys';
-import { setSelectionFormation } from '../game/formations';
+import { setSelectionFormation, gatherArmy } from '../game/formations';
 import { cast } from '../game/abilities';
 import { inSafeZone } from '../game/objectives';
 import type { Battlefield } from './battlefield';
@@ -68,7 +68,7 @@ export class Input {
     });
     view.canvas.addEventListener('wheel', e => { e.preventDefault(); view.zoom = Math.max(25, Math.min(MAP.overviewZoom, view.zoom + e.deltaY * 0.08)); view.resize(); }, { passive: false });
     window.addEventListener('keydown', e => {
-      if ((e.target as HTMLElement).matches('input,select,textarea') || (e.target as HTMLElement).isContentEditable) {
+      if ((e.target as HTMLElement).matches('input:not([type="checkbox"]),select,textarea') || (e.target as HTMLElement).isContentEditable) {
         if (e.key === 'Escape') { (e.target as HTMLElement).blur(); e.preventDefault(); } return;
       }
       if (e.altKey || e.metaKey) return;
@@ -88,6 +88,7 @@ export class Input {
       if (k === 'h') command(w, this.selected, 'hold');
       if (k === 't') command(w, this.selected, 'retreat');
       if (k === 'f') {
+        if (this.sidebarView === 'hero') gatherArmy(w);
         const ids = new Set([...this.selected].filter(id => w.units.find(u => u.id === id)?.kind !== 'hero'));
         command(w, ids, 'follow');
       }
@@ -100,7 +101,7 @@ export class Input {
       if (k === 'end') this.centerCursor();
       if (['+', '=', '-'].includes(k)) { view.zoom = Math.max(25, Math.min(MAP.overviewZoom, view.zoom * (k === '-' ? 1.2 : 1 / 1.2))); view.resize(); }
       if (k === 'p' && w.winner === null) w.paused = !w.paused;
-      if (k === 'escape') { this.attackMove = false; this.selected.clear(); this.activeRegiment = null; }
+      if (k === 'escape') { this.attackMove = false; this.selected.clear(); this.activeRegiment = null; this.sidebarView = 'selection'; }
       syncAbilityBindings(w.players[0], this.abilityBindings);
       const ability = learnedAbilities(w.players[0]).find(a => this.abilityBindings[a] === k); if (ability) cast(w, 0, ability);
       this.onKey(k);

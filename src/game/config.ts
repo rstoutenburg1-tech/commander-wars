@@ -66,6 +66,7 @@ export const DOCTRINE = {
   aggressive: { aggro: 13, leash: 16 }, defensive: { aggro: 7, leash: 8 }, charge: { aggro: 18, leash: 22 },
 };
 export const COHESION = { casualtyLoss: 8, heroDeathLoss: 35, chargeLoss: 22, recovery: 2.5, separationLoss: 2, separationDistance: 7 };
+export const TARGET_PRIORITIES = { closest: 'Nearest', hero: 'Heroes', ranged: 'Ranged troops', footman: 'Footmen', archer: 'Archers', musketeer: 'Musketeers', knight: 'Knights', base: 'Keeps' };
 export const ABILITIES = {
   rally: { name: 'Rally', cost: 45, cooldown: 24, duration: 10, radius: 16, attackSpeed: 1.4, movement: 1.25, cohesion: 30 },
   wind: { name: 'Second Wind', cost: 40, cooldown: 22, heal: 0.3 },

@@ -25,6 +25,7 @@ Open the local URL printed by Vite. `pnpm build` creates a static site in `dist`
 6. Keyboard steering, nine regiments, camera cursor targeting and configurable ability hotkeys.
 7. WASD screen cursor and direct formation buttons/shortcuts.
 8. Hero-selected progression/training, equipment slots, expanded workshop recipes and merchant relics/tomes.
+9. Stable automatic target tracking, unit-class priorities, independent hero escorts and bounded boss combat.
 
 Each milestone is committed as a runnable state. This is a mechanics prototype, not a balanced release.
 

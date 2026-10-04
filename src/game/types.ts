@@ -4,7 +4,7 @@ export type Order = 'move' | 'advance' | 'hold' | 'attack' | 'follow' | 'retreat
 export interface Unit extends Point {
   id: number; team: number; kind: Kind; hp: number; maxHp: number;
   damage: number; meleeDamage: number; speed: number; range: number; cooldown: number; attackTimer: number;
-  order: Order; goal: Point; target?: number; facing: number; regiment: number; travel: number; tactical: boolean;
+  order: Order; goal: Point; target?: number; autoTarget?: number; facing: number; regiment: number; travel: number; tactical: boolean;
 }
 export interface Effect extends Point { to?: Point; color: string; life: number; radius: number }
 export interface Player {
@@ -16,11 +16,12 @@ export interface Player {
   highestLevel: number; skills: Record<SkillId, number>; abilityOrder: Ability[];
   bankedXP: number; items: Partial<Record<ItemId, boolean>>; equipment: Partial<Record<ItemSlot, ItemId>>; itemAbilities: Ability[];
   combatStyle: 'melee' | 'ranged'; training: { warfare: number; vitality: number; command: number };
+  autoTracking: boolean; heroPriority: Priority; escortLayout: 'ring' | 'vanguard' | 'rearguard'; marchWithArmy: boolean;
   craft?: { item: ItemId; remaining: number };
 }
 export type Formation = 'line' | 'wall' | 'wedge';
 export type Engagement = 'aggressive' | 'defensive' | 'charge';
-export type Priority = 'closest' | 'hero' | 'ranged';
+export type Priority = 'closest' | 'hero' | 'ranged' | 'footman' | 'archer' | 'musketeer' | 'knight' | 'base';
 export interface Regiment {
   team: number; index: number; formation: Formation; movement: Order;
   engagement: Engagement; priority: Priority; cohesion: number; facing: number; anchor: Point; goal: Point;

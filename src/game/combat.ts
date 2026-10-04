@@ -1,11 +1,16 @@
 import { STATS, MAP, TEAMS, RULES, FORMATIONS, DOCTRINE, ABILITIES, COHESION, BOSS } from './config';
 import { distance, moveToward, clamp } from './math';
-import type { World, Unit } from './types';
+import type { World, Unit, Priority } from './types';
 import { notify, spawn } from './world';
 import { levelFloor, refreshStats } from './hero';
 import { inSafeZone } from './objectives';
 import { moveOnMap, walkable, projectWalkable } from './navigation';
 import { abilityRank, equipmentBonuses } from './items';
+export const matchesPriority = (u: Unit, priority: Priority) => priority === 'ranged' ? u.kind === 'archer' || u.kind === 'musketeer' : u.kind === priority;
+export function clampBoss(boss: Unit) {
+  const radius = MAP.boss.radius - STATS.boss.radius, d = distance(boss, MAP.boss);
+  if (d > radius) { boss.x = MAP.boss.x + (boss.x - MAP.boss.x) / d * radius; boss.z = MAP.boss.z + (boss.z - MAP.boss.z) / d * radius; }
+}
 export function damageUnit(w: World, victim: Unit, attacker: Unit, amount: number) {
   if (victim.hp <= 0 || inSafeZone(victim) || inSafeZone(attacker) || w.invulnerable && victim.team === 0) return;
   const r = w.regiments.find(r => r.team === victim.team && r.index === victim.regiment);
@@ -53,21 +58,27 @@ export function stepCombat(w: World, dt: number) {
     const r = u.kind !== 'hero' && u.kind !== 'base' && u.kind !== 'boss' ? w.regiments.find(r => r.team === u.team && r.index === u.regiment) : undefined;
     const hero = w.units.find(h => h.team === u.team && h.kind === 'hero');
     const rally = !!hero && w.players[u.team].rallyUntil > w.time && distance(hero, u) < ABILITIES.rally.radius;
-    const explicit = !inSafeZone(u) ? living.find(t => t.id === u.target && t.hp > 0 && t.team !== u.team && !inSafeZone(t)) : undefined;
+    const targetValid = (t: Unit) => t.hp > 0 && t.team !== u.team && !inSafeZone(t) && (u.kind !== 'boss' || t.kind !== 'base' && distance(t, MAP.boss) <= MAP.boss.radius);
+    if (u.kind === 'boss') { clampBoss(u); if (u.target && !living.some(t => t.id === u.target && targetValid(t))) u.target = undefined; }
+    const explicit = !inSafeZone(u) ? living.find(t => t.id === u.target && targetValid(t)) : undefined;
     let enemy = explicit;
-    if (!enemy && !inSafeZone(u) && u.order !== 'move' && u.order !== 'retreat') {
+    if (!enemy && !inSafeZone(u) && u.order !== 'move' && u.order !== 'retreat' && (u.kind === 'boss' || u.kind === 'base' || w.players[u.team].autoTracking)) {
       const aggro = u.kind === 'base' ? u.range : u.kind === 'boss' ? 11 : u.order === 'hold' ? u.range + 1 : r ? DOCTRINE[r.engagement].aggro : 13;
+      const priority = u.kind === 'hero' ? w.players[u.team].heroPriority : r?.priority ?? 'closest';
+      const retained = living.find(t => t.id === u.autoTarget && targetValid(t) && distance(u, t) <= aggro * 1.7 && (!r || u.tactical || distance(t, r.anchor) <= DOCTRINE[r.engagement].leash + u.range));
+      enemy = retained;
       let best = Infinity;
       for (const t of living) {
-        if (t.team === u.team || t.hp <= 0 || inSafeZone(t)) continue;
+        if (!targetValid(t)) continue;
         // Neutral boss responds to nearby attackers; ordinary units need an explicit boss order.
         if (t.kind === 'boss' && u.kind !== 'base') continue;
         const d = distance(u, t) - STATS[t.kind].radius;
         if (d > aggro || r && distance(t, r.anchor) > DOCTRINE[r.engagement].leash + u.range && !u.tactical) continue;
-        const preferred = r?.priority === 'hero' && t.kind === 'hero' || r?.priority === 'ranged' && (t.kind === 'archer' || t.kind === 'musketeer');
+        const preferred = matchesPriority(t, priority);
         const score = d - (preferred ? 30 : 0);
-        if (score < best) { enemy = t; best = score; }
+        if (score < best && (!retained || preferred && !matchesPriority(retained, priority))) { enemy = t; best = score; }
       }
+      u.autoTarget = enemy?.id;
     }
     const d = enemy ? distance(u, enemy) - STATS[enemy.kind].radius : Infinity;
     const melee = u.kind === 'hero' && w.players[u.team].combatStyle === 'melee', attackRange = melee ? 2.5 : u.range;
@@ -76,7 +87,8 @@ export function stepCombat(w: World, dt: number) {
       if (u.attackTimer === 0) {
         const charge = u.kind === 'knight' && r?.engagement === 'charge' && u.travel > 8;
         const warcry = hero && w.players[u.team].warcryUntil > w.time && distance(hero, u) < ABILITIES.warcry.radius;
-        const damage = (u.kind === 'hero' && (melee || d < 2.5) ? u.meleeDamage : u.damage) * (charge ? r?.formation === 'wedge' ? 2.4 : 1.8 : 1) * (warcry ? 1.2 + abilityRank(w.players[u.team], 'warcry') * 0.1 : 1);
+        const aura = hero && u.kind !== 'hero' && u.kind !== 'base' && distance(u, hero) < 18 ? 1 + w.players[u.team].training.command * 0.05 : 1;
+        const damage = (u.kind === 'hero' && (melee || d < 2.5) ? u.meleeDamage : u.damage) * (charge ? r?.formation === 'wedge' ? 2.4 : 1.8 : 1) * (warcry ? 1.2 + abilityRank(w.players[u.team], 'warcry') * 0.1 : 1) * aura;
         damageUnit(w, enemy, u, damage);
         if (charge) {
           const defender = w.regiments.find(r => r.team === enemy!.team && r.index === enemy!.regiment);
@@ -90,7 +102,11 @@ export function stepCombat(w: World, dt: number) {
     } else if (u.speed > 0) {
       const goal = u.kind === 'boss' ? enemy ?? MAP.boss : enemy && u.order !== 'hold' ? enemy : u.goal;
       u.facing = distance(u, goal) > 0.1 ? Math.atan2(goal.x - u.x, goal.z - u.z) : r?.facing ?? u.facing;
-      const speed = u.speed * (r && !u.tactical ? FORMATIONS[r.formation].speed : 1) * (rally ? ABILITIES.rally.movement : 1) * (u.order === 'retreat' ? 1.15 : 1);
+      let speed = u.speed * (r && !u.tactical ? FORMATIONS[r.formation].speed : 1) * (rally ? ABILITIES.rally.movement : 1) * (u.order === 'retreat' ? 1.15 : 1);
+      if (u.kind === 'hero' && w.players[u.team].marchWithArmy && !inSafeZone(u)) {
+        const escorts = w.units.filter(t => t.hp > 0 && t.team === u.team && t.kind !== 'hero' && t.kind !== 'base' && distance(t, u) < 22 && !t.tactical && w.regiments.some(group => group.team === u.team && group.index === t.regiment && group.movement === 'follow'));
+        if (escorts.length) speed = Math.min(speed, Math.min(...escorts.map(t => t.speed * FORMATIONS[w.regiments.find(group => group.team === t.team && group.index === t.regiment)!.formation].speed)));
+      }
       u.travel = Math.min(12, u.travel + Math.min(distance(u, goal), speed * dt));
       moveOnMap(u, goal, speed * dt);
       if (u.kind !== 'hero' && distance(u, MAP.merchant) < MAP.merchant.radius + STATS[u.kind].radius) {
@@ -114,6 +130,7 @@ export function stepCombat(w: World, dt: number) {
     b.x += Math.cos(angle) * push; b.z += Math.sin(angle) * push;
   }
   w.units = w.units.filter(u => u.hp > 0);
+  for (const boss of w.units.filter(u => u.kind === 'boss')) clampBoss(boss);
   for (const p of w.players) {
     if (p.eliminated) continue;
     if (p.respawn > 0) {

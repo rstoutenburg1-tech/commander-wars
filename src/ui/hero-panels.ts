@@ -1,4 +1,4 @@
-import { ITEMS, SKILLS, SHOP_TOMES, type ItemId, type ItemSpec, type ItemSlot } from '../game/config';
+import { ITEMS, SKILLS, SHOP_TOMES, TARGET_PRIORITIES, type ItemId, type ItemSpec, type ItemSlot } from '../game/config';
 import type { Player } from '../game/types';
 const itemIds = Object.keys(ITEMS) as ItemId[];
 export function heroProgressionPanel() {

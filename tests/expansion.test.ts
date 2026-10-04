@@ -7,6 +7,9 @@ import { stepObjectives } from '../src/game/objectives';
 import { cast } from '../src/game/abilities';
 import { damageUnit, stepCombat } from '../src/game/combat';
 import { learnedAbilities } from '../src/game/hotkeys';
+import { spawn } from '../src/game/world';
+import { gatherArmy, stepRegiments } from '../src/game/formations';
+import { command } from '../src/game/commands';
 test('equipment slots apply real bonuses, replace gear without stacking, and unequip cleanly', () => {
   const w = createWorld(), p = w.players[0], h = w.units.find(u => u.team === 0 && u.kind === 'hero')!;
   const base = h.meleeDamage; grantItem(w, 0, 'sword'); assert.equal(h.meleeDamage, base + 40);
@@ -39,4 +42,34 @@ test('hero close attacks deal three times basic ranged damage', () => {
     const hp = enemy.hp; stepCombat(w, 0.05); return hp - enemy.hp;
   };
   assert.equal(dealt(1.8, 'melee'), 135); assert.equal(dealt(5, 'ranged'), 45);
+});
+test('tracking retains moving targets, obeys type priorities and explicit orders, and reacquires after death', () => {
+  const w = createWorld(), h = w.units.find(u => u.team === 0 && u.kind === 'hero')!;
+  Object.assign(h, { x: 0, z: 0, order: 'advance', goal: { x: 25, z: 0 } }); w.players[0].marchWithArmy = false;
+  const a = spawn(w, 1, 'footman', { x: 6, z: 0 }), b = spawn(w, 1, 'archer', { x: 7, z: 0 }); w.units = [h, a, b]; a.attackTimer = b.attackTimer = 100;
+  stepCombat(w, 0.05); assert.equal(h.autoTarget, a.id);
+  a.x = 10; b.x = 3; stepCombat(w, 0.05); assert.equal(h.autoTarget, a.id);
+  w.players[0].heroPriority = 'archer'; stepCombat(w, 0.05); assert.equal(h.autoTarget, b.id);
+  command(w, new Set([h.id]), 'attack', a, a.id); const x = h.x; stepCombat(w, 0.05); assert.equal(h.target, a.id); assert.ok(h.x > x);
+  command(w, new Set([h.id]), 'move', { x: -20, z: 0 }); stepCombat(w, 0.05); assert.equal(h.autoTarget, undefined);
+  command(w, new Set([h.id]), 'advance', { x: 25, z: 0 }); b.hp = 0; stepCombat(w, 0.05); assert.equal(h.autoTarget, a.id);
+  w.players[0].autoTracking = false; h.autoTarget = undefined; stepCombat(w, 0.05); assert.equal(h.autoTarget, undefined);
+});
+test('army escorts occupy distinct positions and an independent regiment detaches', () => {
+  const w = createWorld(), h = w.units.find(u => u.team === 0 && u.kind === 'hero')!;
+  h.x = 0; h.z = 0; h.facing = 0;
+  const troops = w.units.filter(u => u.team === 0 && u.kind === 'footman'); troops.slice(2).forEach(u => u.regiment = 1);
+  gatherArmy(w); for (let i = 0; i < 2000; i++) stepRegiments(w, 0.05);
+  assert.ok(Math.hypot(w.regiments[0].anchor.x - w.regiments[1].anchor.x, w.regiments[0].anchor.z - w.regiments[1].anchor.z) > 16);
+  command(w, new Set(troops.slice(2).map(u => u.id)), 'move', { x: 30, z: 30 });
+  assert.equal(w.regiments[1].movement, 'move'); assert.equal(w.regiments[0].movement, 'follow');
+});
+test('boss is contained even after separation, rejects outside targets and returns home', () => {
+  const w = createWorld(), boss = w.units.find(u => u.kind === 'boss')!, h = w.units.find(u => u.team === 0 && u.kind === 'hero')!;
+  w.units = [boss, h]; boss.x = MAP.boss.x + 19; h.x = MAP.boss.x + 22; h.z = MAP.boss.z; h.order = 'hold'; boss.target = h.id;
+  const before = h.hp; stepObjectives(w, 20); assert.equal(h.hp, before);
+  stepCombat(w, 0.05); assert.equal(boss.target, undefined);
+  assert.ok(Math.hypot(boss.x - MAP.boss.x, boss.z - MAP.boss.z) <= MAP.boss.radius - STATS.boss.radius + 0.0001);
+  const d = Math.hypot(boss.x - MAP.boss.x, boss.z - MAP.boss.z); for (let i = 0; i < 100; i++) stepCombat(w, 0.05);
+  assert.ok(Math.hypot(boss.x - MAP.boss.x, boss.z - MAP.boss.z) < d);
 });

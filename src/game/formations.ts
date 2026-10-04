@@ -2,6 +2,21 @@ import { COHESION, FORMATIONS, MAP, STATS, ABILITIES } from './config';
 import { distance, moveToward, clamp } from './math';
 import type { Formation, Point, World } from './types';
 import { moveOnMap, projectWalkable } from './navigation';
+import { commandRegiment } from './commands';
+export function escortOffset(layout: 'ring' | 'vanguard' | 'rearguard', index: number, count: number, facing: number): Point {
+  const angle = facing + (layout === 'ring' ? index / Math.max(1, count) * Math.PI * 2 : 0);
+  if (layout === 'ring') return { x: Math.sin(angle) * 9, z: Math.cos(angle) * 9 };
+  const side = (index % 3 - 1) * 10, front = (layout === 'vanguard' ? 1 : -1) * (8 + Math.floor(index / 3) * 7);
+  return { x: side * Math.cos(angle) + front * Math.sin(angle), z: -side * Math.sin(angle) + front * Math.cos(angle) };
+}
+export function gatherArmy(w: World, team = 0) {
+  for (const r of w.regiments.filter(r => r.team === team)) {
+    const troops = w.units.filter(u => u.team === team && u.regiment === r.index && u.kind !== 'hero' && u.kind !== 'base');
+    if (!troops.length) continue;
+    r.anchor = { x: troops.reduce((sum, u) => sum + u.x, 0) / troops.length, z: troops.reduce((sum, u) => sum + u.z, 0) / troops.length };
+    commandRegiment(w, team, r.index, 'follow');
+  }
+}
 export function formationSlot(formation: Formation, i: number, n: number, facing: number): Point {
   const spacing = FORMATIONS[formation].spacing;
   let side: number, back: number;
@@ -33,7 +48,11 @@ export function stepRegiments(w: World, dt: number) {
     troops.sort((a, b) => Number(STATS[a.kind].range > 3) - Number(STATS[b.kind].range > 3) || a.id - b.id);
     const hero = w.units.find(u => u.team === r.team && u.kind === 'hero');
     let goal = r.goal;
-    if (r.movement === 'follow') goal = hero ? { x: hero.x - Math.sin(hero.facing) * 5, z: hero.z - Math.cos(hero.facing) * 5 } : r.anchor;
+    if (r.movement === 'follow' && hero) {
+      const escorts = w.regiments.filter(group => group.team === r.team && group.movement === 'follow' && w.units.some(u => u.team === r.team && u.regiment === group.index && u.kind !== 'hero' && u.kind !== 'base' && !u.tactical));
+      const offset = escortOffset(w.players[r.team].escortLayout, escorts.indexOf(r), escorts.length, hero.facing);
+      goal = projectWalkable({ x: hero.x + offset.x, z: hero.z + offset.z });
+    } else if (r.movement === 'follow') goal = r.anchor;
     if (r.movement === 'retreat') goal = { x: MAP.bases[r.team].x * 0.8, z: MAP.bases[r.team].z * 0.8 };
     const moving = r.movement !== 'hold' && distance(r.anchor, goal) > 0.5;
     if (moving) {

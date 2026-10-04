@@ -19,8 +19,9 @@ export function createWorld(): World {
       mana: RULES.hero.mana, rallyUntil: 0, warcryUntil: 0, standfastUntil: 0,
       cooldowns: { rally: 0, wind: 0, cleave: 0, warcry: 0, standfast: 0, ultimate: 0 },
       highestLevel: 1, skills: Object.fromEntries(Object.keys(SKILLS).map(id => [id, 0])) as Record<SkillId, number>, abilityOrder: [],
-      aiTimer: 0, aiState: 'Muster', bankedXP: 0, items: {}, equipment: {}, itemAbilities: [], combatStyle: 'melee', training: { warfare: 0, vitality: 0, command: 0 } });
-    for (let index = 0; index < RULES.regimentCount; index++) w.regiments.push({ team, index, formation: 'line', movement: 'hold', engagement: 'aggressive', priority: 'closest', cohesion: 100, facing: Math.atan2(-base.x, -base.z),
+      aiTimer: 0, aiState: 'Muster', bankedXP: 0, items: {}, equipment: {}, itemAbilities: [], combatStyle: 'melee', training: { warfare: 0, vitality: 0, command: 0 },
+      autoTracking: true, heroPriority: 'closest', escortLayout: 'ring', marchWithArmy: true });
+    for (let index = 0; index < RULES.regimentCount; index++) w.regiments.push({ team, index, formation: 'line', movement: team === 0 && index === 0 ? 'follow' : 'hold', engagement: 'aggressive', priority: 'closest', cohesion: 100, facing: Math.atan2(-base.x, -base.z),
       anchor: { x: base.x * 0.82, z: base.z * 0.82 }, goal: { x: base.x * 0.82, z: base.z * 0.82 } });
     spawn(w, team, 'base', base);
     createStructures(w, team);
