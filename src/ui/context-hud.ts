@@ -1,10 +1,10 @@
-import { ABILITIES, FORMATIONS, ITEMS, MAP, RULES, SKILLS, STATS, TEAMS, UPGRADES, SHOP_TOMES, TARGET_PRIORITIES, isTroop, ranks, troopKinds, type Ability, type Building, type SkillId, type TroopKind, type ItemId, type ItemSlot, type OutpostBuilding } from '../game/config';
-import { buildingLevel, cycleCost, startUpgrade, unlocked, upgradeReason } from '../game/economy';
+import { ABILITIES, FORMATIONS, ITEMS, MAP, RULES, SKILLS, TEAMS, UPGRADES, SHOP_TOMES, TROOP_COSTS, TROOP_ROLES, TARGET_PRIORITIES, isTroop, ranks, troopKinds, type Ability, type Building, type SkillId, type TroopKind, type ItemId, type ItemSlot, type OutpostBuilding, type Support } from '../game/config';
+import { buildingLevel, cycleCost, costText, productionBurn, resourceIncome, startUpgrade, unlocked, upgradeReason } from '../game/economy';
 import { cast } from '../game/abilities';
 import { command, commandRegiment } from '../game/commands';
-import { grantLevelPoints, skillPoints, skillReason, trainSkill, activeSlots } from '../game/skills';
+import { skillPoints, skillReason, trainSkill, activeSlots } from '../game/skills';
 import { buildingNames, selectedStructure } from '../game/structures';
-import { levelFloor, refreshStats, xpRequired } from '../game/hero';
+import { refreshStats, xpRequired } from '../game/hero';
 import { merchant, startCraft, inSafeZone } from '../game/objectives';
 import { spawn } from '../game/world';
 import { ABILITY_KEYS, learnedAbilities, syncAbilityBindings } from '../game/hotkeys';
@@ -14,6 +14,7 @@ import { heroProgressionPanel, equipmentPanel, merchantPanel, workshopPanel } fr
 import { gatePanel, territoriesPanel, outpostPanel, updateGatePanel, updateOutpostPanel } from './territory-panels';
 import { toggleGate, repairGate, buildTower, garrisonUnit, leaveTower, gatePosition } from '../game/gates';
 import { buildOutpost } from '../game/outposts';
+import { supportReason, useSupport } from '../game/support';
 import type { World, Formation, Engagement, Priority, Order } from '../game/types';
 import type { Input } from '../view/input';
 const setText = (id: string, value: string) => { const e = document.getElementById(id); if (e && e.textContent !== value) e.textContent = value; };
@@ -38,9 +39,9 @@ export class HUD {
     else if (s && w.territories[s.site].captured) content = outpostPanel(s.site);
     else if (s) {
       content = `<h2 id="selection-name"></h2><p id="selection-stats"></p>`;
-      if (s.building === 'base') content += `${this.upgrade('base')}<p>Keep advancement raises your commander's level cap and minimum level. Select the hero with Tab to manage skills, training and equipment.</p>`;
-      else if (s.building === 'barracks') content += `${this.upgrade('barracks')}<h2>Troop production</h2><p>Click a troop to add it to future waves. Existing troops keep their class.</p><div class="troop-cards">${troopKinds.map(k => `<div class="troop-card"><button data-troop="${k}"></button><div class="buttons"><button data-minus="${k}" aria-label="Remove ${k} from wave">−</button><span id="count-${k}"></span></div><small id="unlock-${k}"></small></div>`).join('')}</div>
-        <label>Wave interval <select id="interval">${[10, 15, 20, 30].map(n => `<option value="${n}">${n} seconds</option>`).join('')}<option value="0">Paused</option></select></label><label>Gold reserve <input id="reserve" type="number" min="0" max="5000" step="25"></label><label>Assign new troops <select id="spawn-regiment">${Array.from({ length: RULES.regimentCount }, (_, i) => `<option value="${i}">Regiment ${i + 1}</option>`).join('')}</select></label><p id="production-cost"></p><p id="production-status"></p>`;
+      if (s.building === 'base') content += `${this.upgrade('base')}<p>Keep advancement opens technology and raises the hero's level cap by 10. Levels and skill points come from combat XP. Each tier adds 8% to troop base stats and 25% to keep stats. Select the hero with Tab for skills, training and equipment.</p>`;
+      else if (s.building === 'barracks') content += `${this.upgrade('barracks')}<h2>Troop production</h2><p id="production-cost"></p><p id="production-budget"></p><p id="production-status"></p><p>Click a troop to add it to future waves. Existing troops keep their class.</p><div class="troop-cards">${troopKinds.map(k => `<div class="troop-card"><button data-troop="${k}" title="${TROOP_ROLES[k]}"></button><div class="buttons"><button data-minus="${k}" aria-label="Remove ${k} from wave">−</button><span id="count-${k}"></span></div><small id="unlock-${k}"></small></div>`).join('')}</div>
+        <label>Wave interval <select id="interval">${[10, 15, 20, 30].map(n => `<option value="${n}">${n} seconds</option>`).join('')}<option value="0">Paused</option></select></label><label>Gold reserve <input id="reserve" type="number" min="0" max="5000" step="25"></label><label>Assign new troops <select id="spawn-regiment">${Array.from({ length: RULES.regimentCount }, (_, i) => `<option value="${i}">Regiment ${i + 1}</option>`).join('')}</select></label><details><summary>Unit counters & siege</summary>${troopKinds.map(k => `<p><strong>${k}</strong>: ${TROOP_ROLES[k]}</p>`).join('')}<p>Archers deal 55% and musketeers 80% normal damage to keeps and gates. Workshop II siege ammunition raises their structure damage to 150% for 35s. Keep ranged troops behind infantry and flank shield walls.</p></details>`;
       else if (s.building === 'crafting') content += `${this.upgrade('crafting')}${workshopPanel()}`;
       else content += `${this.upgrade(s.building)}<p id="income-rate"></p><p>Develop this site for automatic extraction. Upgrades keep producing at the previous rate until complete.</p>`;
     } else {
@@ -80,6 +81,7 @@ export class HUD {
     if (b.dataset.minus) this.changeCount(b.dataset.minus as TroopKind, -1);
     if (b.dataset.ability) cast(w, 0, b.dataset.ability as Ability);
     if (b.dataset.craft) startCraft(w, 0, b.dataset.craft as ItemId);
+    if (b.dataset.support) useSupport(w, 0, b.dataset.support as Support);
     if (b.dataset.trade) merchant(w, b.dataset.trade as 'buy' | 'sell-sword' | 'sell-armor');
     if (b.dataset.regiment !== undefined) { this.editingRegiment = Number(b.dataset.regiment); this.input.selectRegiment(this.editingRegiment); }
     if (b.dataset.formation) this.input.setFormation(b.dataset.formation as Formation);
@@ -123,7 +125,7 @@ export class HUD {
   private debug(action: string) {
     const p = this.w.players[0]; if (p.eliminated) return;
     if (action === 'resources') { p.gold += 1500; p.wood += 500; p.ore += 500; } if (action === 'xp') p.xp += 2000;
-    if (action === 'tier') { p.tier = Math.min(4, p.tier + 1); p.level = Math.max(p.level, levelFloor(p.tier)); p.barracks = Math.min(3, p.tier); p.crafting = 1; grantLevelPoints(p); refreshStats(this.w, 0); }
+    if (action === 'tier') { p.tier = Math.min(4, p.tier + 1); p.barracks = Math.min(3, p.tier + 1); p.crafting = 1; p.xp += p.bankedXP; p.bankedXP = 0; refreshStats(this.w, 0); }
     if (action === 'ai') this.w.aiEnabled = !this.w.aiEnabled; if (action === 'invulnerable') this.w.invulnerable = !this.w.invulnerable;
     if (action === 'roster') for (const [i, kind] of troopKinds.entries()) spawn(this.w, 0, kind, { x: MAP.bases[0].x * 0.82 + i * 2, z: MAP.bases[0].z * 0.82 });
   }
@@ -184,8 +186,11 @@ export class HUD {
     if (s && !w.territories[s.site].captured) {
       const level = buildingLevel(p, s.building);
       if (s.building === 'barracks') {
-        for (const kind of troopKinds) { const btn = document.querySelector<HTMLButtonElement>(`[data-troop="${kind}"]`)!; btn.textContent = `+ ${kind} · ${STATS[kind].cost}g`; btn.disabled = !unlocked(p, kind) || Object.values(p.production.counts).reduce((a, b) => a + b, 0) >= RULES.maxCycleUnits; setText(`count-${kind}`, `${p.production.counts[kind]} per wave`); setText(`unlock-${kind}`, unlocked(p, kind) ? 'Click to add; − to remove' : `Requires Barracks ${kind === 'knight' ? 3 : 2}`); }
-        setText('production-cost', `Wave: ${cycleCost(p)} gold · Burn ${p.production.interval ? Math.round(cycleCost(p) * 60 / p.production.interval) : 0}g/min · Income ${RULES.incomeRates.goldmine[p.goldmine] * 60}g/min`);
+        for (const kind of troopKinds) { const btn = document.querySelector<HTMLButtonElement>(`[data-troop="${kind}"]`)!; btn.textContent = `+ ${kind} · ${costText(TROOP_COSTS[kind], true)}`; btn.disabled = !unlocked(p, kind) || Object.values(p.production.counts).reduce((a, b) => a + b, 0) >= RULES.maxCycleUnits; setText(`count-${kind}`, `${p.production.counts[kind]} per wave`); setText(`unlock-${kind}`, unlocked(p, kind) ? ({ footman: 'Brace against cavalry', archer: 'Counter infantry', musketeer: 'Counter armor & heroes', knight: 'Flank ranged troops' })[kind] : `Requires Barracks ${kind === 'knight' ? 3 : 2}`); }
+        const burn = productionBurn(w, p), income = resourceIncome(w, p), perMinute = { gold: income.gold * 60, wood: income.wood * 60, ore: income.ore * 60 };
+        setText('production-cost', `Wave: ${costText(cycleCost(p))} · Planned burn: ${costText(burn)}/min · Income: ${costText(perMinute)}/min (all bases)`);
+        const deficits = (['gold', 'wood', 'ore'] as const).filter(resource => burn[resource] > perMinute[resource] + 0.01);
+        setText('production-budget', deficits.length ? `Stockpile draining: ${deficits.join(', ')}. Slow waves, change composition or improve extraction.` : 'Income covers this roster. Extra resources can fund gear, supplies and construction.');
         setText('production-status', p.production.interval ? `${p.production.status} · next wave in ${Math.ceil(p.production.timer)}s` : 'Production paused');
         this.field('interval', p.production.interval); this.field('reserve', p.production.reserve); this.field('spawn-regiment', p.production.regiment);
       }
@@ -202,6 +207,8 @@ export class HUD {
     document.querySelectorAll<HTMLButtonElement>('[data-ability]').forEach(b => { const a = b.dataset.ability as Ability; b.textContent = `${this.input.abilityBindings[a]?.toUpperCase() ?? 'Unassigned'} · ${ABILITIES[a].name} ${abilityRank(p, a)} · ${p.cooldowns[a] > 0 ? `${Math.ceil(p.cooldowns[a])}s` : `${ABILITIES[a].cost} mana`}`; b.disabled = !hero || w.paused || p.mana < ABILITIES[a].cost || p.cooldowns[a] > 0; });
     setText('items-status', p.craft ? `Crafting ${ITEMS[p.craft.item].name} · ${Math.ceil(p.craft.remaining)}s` : 'Ready to craft. Equipment slots prevent duplicate bonuses.');
     document.querySelectorAll<HTMLButtonElement>('[data-craft]').forEach(b => { const id = b.dataset.craft as ItemId; b.disabled = !!craftReason(p, id); setText(`craft-reason-${id}`, craftReason(p, id) ?? 'Ready'); });
+    document.querySelectorAll<HTMLButtonElement>('[data-support]').forEach(b => { const id = b.dataset.support as Support; b.disabled = !!supportReason(w, 0, id); setText(`support-reason-${id}`, supportReason(w, 0, id) ?? 'Ready'); });
+    setText('siege-status', p.siegeUntil > w.time ? `Siege ammunition active · ${Math.ceil(p.siegeUntil - w.time)}s left` : 'Siege ammunition inactive');
     document.querySelectorAll<HTMLButtonElement>('[data-buy-item]').forEach(b => { const id = b.dataset.buyItem as ItemId; b.disabled = !trading || !!p.items[id] || p.gold < ITEMS[id].buy; });
     document.querySelectorAll<HTMLButtonElement>('[data-sell-item]').forEach(b => { const id = b.dataset.sellItem as ItemId; b.disabled = !trading || !p.items[id] || w.merchantGold < ITEMS[id].sell; });
     document.querySelectorAll<HTMLButtonElement>('[data-consumable]').forEach(b => { const id = b.dataset.consumable!, cost = id === 'healing' ? 90 : id === 'mana' ? 120 : SHOP_TOMES[id as keyof typeof SHOP_TOMES].buy; b.disabled = !trading || p.gold < cost || (id === 'warcry' || id === 'standfast') && abilityRank(p, id) > 0; });

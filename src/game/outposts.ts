@@ -1,6 +1,6 @@
-import { MAP, OUTPOSTS, RULES, STATS, isTroop, troopKinds, type OutpostBuilding } from './config';
+import { MAP, OUTPOSTS, RULES, isTroop, troopKinds, type OutpostBuilding } from './config';
 import type { World } from './types';
-import { afford, pay, unlocked } from './economy';
+import { afford, pay, unlocked, recruit } from './economy';
 import { spawn, notify } from './world';
 import { buildingPosition } from './structures';
 export function captureTerritory(w: World, site: number, team: number) {
@@ -23,13 +23,12 @@ export function stepOutposts(w: World, dt: number) {
     if (!t.captured || t.owner === null || w.players[t.owner].eliminated) continue;
     const p = w.players[t.owner];
     if (t.construction && (t.construction.remaining -= dt) <= 0) { t.buildings[t.construction.building] = 1; if (p.id === 0) notify(w, `Captured base ${t.site + 1}: ${t.construction.building} ready.`); t.construction = undefined; }
-    p.gold += t.buildings.goldmine * 4 * dt; p.wood += t.buildings.forest * 1.2 * dt; p.ore += t.buildings.quarry * 0.9 * dt;
+    p.gold += t.buildings.goldmine * RULES.incomeRates.goldmine[1] * dt; p.wood += t.buildings.forest * RULES.incomeRates.forest[1] * dt; p.ore += t.buildings.quarry * RULES.incomeRates.quarry[1] * dt;
     if (!t.buildings.barracks || p.production.interval === 0) continue;
     t.spawnTimer -= dt; if (t.spawnTimer > 0) continue; t.spawnTimer = p.production.interval;
     let count = w.units.filter(u => u.team === p.id && u.hp > 0 && isTroop(u.kind)).length;
     for (const kind of troopKinds) for (let i = 0; unlocked(p, kind) && i < p.production.counts[kind]; i++) {
-      if (count >= RULES.armyCap || p.gold - STATS[kind].cost < p.production.reserve) continue;
-      p.gold -= STATS[kind].cost;
+      if (count >= RULES.armyCap || !recruit(p, kind)) continue;
       const pos = buildingPosition(t.site, 'barracks'); pos.x += (count % 4) * 1.8; pos.z += 6;
       spawn(w, p.id, kind, pos, t.regiment); count++;
     }

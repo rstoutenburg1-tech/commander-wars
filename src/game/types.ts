@@ -21,6 +21,7 @@ export interface Player {
   bankedXP: number; items: Partial<Record<ItemId, boolean>>; equipment: Partial<Record<ItemSlot, ItemId>>; itemAbilities: Ability[];
   combatStyle: 'melee' | 'ranged'; training: { warfare: number; vitality: number; command: number };
   autoTracking: boolean; heroPriority: Priority; escortLayout: 'ring' | 'vanguard' | 'rearguard'; marchWithArmy: boolean;
+  siegeUntil: number; supportReady: { resupply: number; siege: number };
   craft?: { item: ItemId; remaining: number };
 }
 export type Formation = 'line' | 'wall' | 'wedge';

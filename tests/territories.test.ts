@@ -48,7 +48,7 @@ test('tower range, damage and protection work in combat; losing a gate dismounts
   const w = createWorld(); w.gates[0].tower = true; w.gates[0].open = false;
   const a = spawn(w, 0, 'archer', point(0, 3)), enemy = spawn(w, 1, 'footman', point(0, -14)); enemy.attackTimer = 100;
   assert.equal(garrisonUnit(w, 0, a.id), true); const hp = enemy.hp; const gate = w.units.find(u => u.id === w.gates[0].id)!;
-  w.units = [a, enemy, gate]; stepCombat(w, .05); assert.ok(Math.abs(hp - enemy.hp - STATS.archer.damage * GATES.damageBonus) < .001);
+  w.units = [a, enemy, gate]; stepCombat(w, .05); assert.ok(Math.abs(hp - enemy.hp - STATS.archer.damage * GATES.damageBonus * 1.3) < .001);
   const before = a.hp; damageUnit(w, a, enemy, 100); assert.ok(Math.abs(before - a.hp - 65) < .001);
   kill(w, gate, enemy); assert.equal(a.garrison, undefined); assert.equal(w.gates[0].garrison.length, 0); assert.equal(w.gates[0].tower, false); assert.ok(a.hp > 0);
 });

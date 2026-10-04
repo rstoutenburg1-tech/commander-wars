@@ -26,10 +26,27 @@ export const RULES = {
   tick: 1 / 20, armyCap: 40, regimentCount: 9, startingFootmen: 4, startingGold: 360, startingWood: 40, startingOre: 30,
   income: 4, spawnInterval: 20, startingCycleUnits: 2, maxCycleUnits: 8, killBounty: 0.5,
   incomeRates: { goldmine: [0, 4, 6, 9], forest: [0, 1.2, 2, 3], quarry: [0, 0.9, 1.5, 2.5] },
-  hero: { xpPerLevel: 55, respawn: [16, 24, 32, 40], mana: 120, manaRegen: 3, hpRegen: 2, deathLevels: 2 },
+  hero: { xpPerLevel: 30, respawn: [16, 24, 32, 40], mana: 120, manaRegen: 3, hpRegen: 2, deathLevels: 2 },
   ai: { thinkInterval: 3, firstAttack: 150, baseAssault: 360, minAttackArmy: 12, retreatHp: 0.3, defendRadius: 32 },
 };
 export interface Cost { gold: number; wood: number; ore: number }
+export const TROOP_COSTS: Record<TroopKind, Cost> = {
+  footman: { gold: STATS.footman.cost, wood: 0, ore: 0 },
+  archer: { gold: STATS.archer.cost, wood: 10, ore: 0 },
+  musketeer: { gold: STATS.musketeer.cost, wood: 0, ore: 12 },
+  knight: { gold: STATS.knight.cost, wood: 8, ore: 16 },
+};
+export const TROOP_ROLES: Record<TroopKind, string> = {
+  footman: 'Shield wall blocks frontal cavalry charges. +40% damage to knights.',
+  archer: '+30% damage to footmen; weak against knights and structures.',
+  musketeer: '+35% damage to knights, +15% to heroes; vulnerable to cavalry.',
+  knight: '+35% damage to ranged troops. Flank shield walls to land charges.',
+};
+export const SUPPORT = {
+  resupply: { name: 'Field resupply', cost: { gold: 60, wood: 50, ore: 35 }, tier: 1, cooldown: 45, radius: 18, heal: 0.2, cohesion: 20 },
+  siege: { name: 'Siege ammunition', cost: { gold: 100, wood: 60, ore: 60 }, tier: 2, cooldown: 75, duration: 35 },
+};
+export type Support = keyof typeof SUPPORT;
 export const GATES = { toggleGold: 20, repair: { gold: 400, wood: 100, ore: 100 }, tower: { gold: 900, wood: 150, ore: 120 }, towerTime: 30, capacity: 3, rangeBonus: 6, damageBonus: 1.25, mitigation: 0.35 };
 export const OUTPOSTS = {
   barracks: { cost: { gold: 350, wood: 80, ore: 60 }, time: 25 },
@@ -47,8 +64,8 @@ export const UPGRADES: Record<Building, Record<number, Upgrade>> = {
     4: { cost: { gold: 900, wood: 260, ore: 220 }, time: 90, requiresTier: 3 },
   },
   barracks: {
-    2: { cost: { gold: 180, wood: 40, ore: 30 }, time: 15, requiresTier: 2 },
-    3: { cost: { gold: 320, wood: 80, ore: 60 }, time: 25, requiresTier: 3 },
+    2: { cost: { gold: 180, wood: 40, ore: 30 }, time: 15, requiresTier: 1 },
+    3: { cost: { gold: 320, wood: 80, ore: 60 }, time: 25, requiresTier: 2 },
   },
   crafting: { 1: { cost: { gold: 70, wood: 25, ore: 15 }, time: 15, requiresTier: 1 }, 2: { cost: { gold: 400, wood: 80, ore: 100 }, time: 25, requiresTier: 2 } },
   goldmine: {

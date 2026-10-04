@@ -4,7 +4,7 @@ import { createWorld, spawn } from '../src/game/world.ts';
 import { step } from '../src/game/simulation.ts';
 import { stepEconomy, startUpgrade } from '../src/game/economy.ts';
 import { kill, damageUnit, stepCombat } from '../src/game/combat.ts';
-import { progressHero, levelFloor } from '../src/game/hero.ts';
+import { progressHero } from '../src/game/hero.ts';
 import { command, commandRegiment } from '../src/game/commands.ts';
 import { formationSlot, stepRegiments } from '../src/game/formations.ts';
 import { cast } from '../src/game/abilities.ts';
@@ -29,30 +29,31 @@ test('upgrades charge once, remain at previous level until timer expires', () =>
 });
 test('roster changes affect only future units and require barracks unlock', () => {
   const w = createWorld(), p = w.players[0];
-  p.production.counts = { footman: 0, archer: 2, musketeer: 0, knight: 0 };
-  p.production.timer = 0; stepEconomy(w, 0.05); assert.equal(w.units.some(u => u.team === 0 && u.kind === 'archer'), false);
+  p.production.counts = { footman: 0, archer: 0, musketeer: 2, knight: 0 };
+  p.production.timer = 0; stepEconomy(w, 0.05); assert.equal(w.units.some(u => u.team === 0 && u.kind === 'musketeer'), false);
   p.tier = 2; p.barracks = 2; p.production.timer = 0; stepEconomy(w, 0.05);
-  assert.equal(w.units.filter(u => u.team === 0 && u.kind === 'archer').length, 2);
+  assert.equal(w.units.filter(u => u.team === 0 && u.kind === 'musketeer').length, 2);
   assert.equal(w.units.filter(u => u.team === 0 && u.kind === 'footman').length, RULES.startingFootmen);
 });
-test('XP banks at cap and commander death respects tier minimum', () => {
+test('XP banks at cap and commander death loses earned levels after promotion', () => {
   const w = createWorld(), p = w.players[0]; p.level = 10; p.xp = 5000; progressHero(w, 0.05);
   assert.equal(p.level, 10); assert.equal(p.bankedXP, 5000);
   p.crafting = 1; p.gold = 1000; p.wood = 200; p.ore = 200;
   assert.equal(startUpgrade(w, 0, 'base'), true); stepEconomy(w, 45.1);
   progressHero(w, 0.05); assert.ok(p.level > 11); p.level = 11;
   const hero = w.units.find(u => u.team === 0 && u.kind === 'hero')!, enemy = w.units.find(u => u.team === 1 && u.kind === 'hero')!;
-  kill(w, hero, enemy); assert.equal(p.level, levelFloor(2)); assert.equal(p.respawn, RULES.hero.respawn[1]);
+  kill(w, hero, enemy); assert.equal(p.level, 9); assert.equal(p.respawn, RULES.hero.respawn[1]);
 });
 test('base destruction eliminates army and produces victory', () => {
   const w = createWorld(), hero = w.units.find(u => u.team === 0 && u.kind === 'hero')!;
   for (const team of [1, 2, 3]) kill(w, w.units.find(u => u.team === team && u.kind === 'base')!, hero);
   assert.equal(w.winner, 0); assert.equal(w.units.some(u => u.team > 0 && u.team < 4 && u.hp > 0), false);
 });
-test('three AIs progress and fight during a five-minute simulation', () => {
+test('three AIs develop armies and advance during a five-minute simulation', () => {
   const w = createWorld(); w.invulnerable = true;
   for (let i = 0; i < 6000 && w.winner === null; i++) step(w, 0.05);
-  assert.ok(w.players.slice(1).some(p => p.tier >= 2)); assert.ok(w.players.slice(1).some(p => p.level > 1 || p.eliminated));
+  assert.ok(w.players.slice(1).some(p => p.tier >= 2));
+  assert.ok(w.units.filter(u => u.kind === 'hero' && u.team > 0 && u.team < 4).every(u => Math.hypot(u.x - MAP.bases[u.team].x, u.z - MAP.bases[u.team].z) > 40));
   for (const p of w.players) assert.ok(p.gold >= 0 && p.wood >= 0 && p.ore >= 0);
   assert.ok(w.units.length <= 4 * (RULES.armyCap + 3) + 1); assert.ok(w.units.every(u => Number.isFinite(u.hp) && Number.isFinite(u.x)));
 });
@@ -145,11 +146,11 @@ test('each infrastructure site is separately selectable and belongs to its playe
   assert.equal(selectedStructure(w, new Set([w.structures.find(s => s.team === 1 && s.building === 'barracks')!.id])), undefined);
   assert.equal(new Set(w.structures.map(s => s.id)).size, 24);
 });
-test('Tier IV promotes to Marshal and supports the level 40 cap', () => {
+test('Tier IV promotes to Marshal and opens the level 40 cap without free levels', () => {
   const w = createWorld(), p = w.players[0]; p.tier = 3; p.level = 30; p.barracks = 3; p.crafting = 1;
   p.gold = 2000; p.wood = 1000; p.ore = 1000;
   assert.equal(startUpgrade(w, 0, 'base'), true); stepEconomy(w, 90.1);
-  assert.equal(p.tier, 4); assert.equal(p.level, 31); p.xp = 100000; progressHero(w, 0.05);
+  assert.equal(p.tier, 4); assert.equal(p.level, 30); p.xp = 100000; progressHero(w, 0.05);
   assert.equal(p.level, 40); assert.equal(p.highestLevel, 40); assert.ok(p.bankedXP > 0);
 });
 test('learned area strike damages enemies and ultimate heals hero and nearby troops once', () => {

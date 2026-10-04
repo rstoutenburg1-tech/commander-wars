@@ -2,13 +2,31 @@ import { STATS, MAP, TEAMS, RULES, FORMATIONS, DOCTRINE, ABILITIES, COHESION, BO
 import { distance, clamp } from './math';
 import type { World, Unit, Priority } from './types';
 import { notify, spawn } from './world';
-import { levelFloor, refreshStats } from './hero';
+import { refreshStats } from './hero';
 import { inSafeZone } from './objectives';
 import { walkable, projectWalkable } from './navigation';
 import { abilityRank, equipmentBonuses } from './items';
 import { blockingGate, moveWithGates, leaveTower } from './gates';
 import { captureTerritory } from './outposts';
 export const matchesPriority = (u: Unit, priority: Priority) => priority === 'ranged' ? u.kind === 'archer' || u.kind === 'musketeer' : u.kind === priority;
+export function ordinaryAttackModifier(w: World, attacker: Unit, victim: Unit, meleeAttack = false) {
+  if (victim.kind === 'base' || victim.kind === 'gate') {
+    if (attacker.kind === 'archer' || attacker.kind === 'musketeer') {
+      return w.players[attacker.team]?.siegeUntil > w.time ? 1.5 : attacker.kind === 'archer' ? 0.55 : 0.8;
+    }
+    return attacker.kind === 'hero' && !meleeAttack ? 0.75 : 1;
+  }
+  if (attacker.kind === 'footman' && victim.kind === 'knight') return 1.4;
+  if (attacker.kind === 'archer') return victim.kind === 'footman' ? 1.3 : victim.kind === 'knight' ? 0.75 : 1;
+  if (attacker.kind === 'musketeer') return victim.kind === 'knight' ? 1.35 : victim.kind === 'hero' ? 1.15 : victim.kind === 'footman' ? 0.85 : 1;
+  if (attacker.kind === 'knight' && (victim.kind === 'archer' || victim.kind === 'musketeer')) return 1.35;
+  return 1;
+}
+export function bracedAgainst(w: World, victim: Unit, attacker: Unit) {
+  const r = w.regiments.find(r => r.team === victim.team && r.index === victim.regiment);
+  return victim.kind === 'footman' && victim.garrison === undefined && r?.formation === 'wall' && r.cohesion >= 50 &&
+    Math.cos(Math.atan2(attacker.x - victim.x, attacker.z - victim.z) - r.facing) > 0.45;
+}
 export function clampBoss(boss: Unit) {
   const radius = MAP.boss.radius - STATS.boss.radius, d = distance(boss, MAP.boss);
   if (d > radius) { boss.x = MAP.boss.x + (boss.x - MAP.boss.x) / d * radius; boss.z = MAP.boss.z + (boss.z - MAP.boss.z) / d * radius; }
@@ -46,7 +64,7 @@ export function kill(w: World, victim: Unit, attacker: Unit) {
   if (victim.kind === 'hero') {
     const owner = w.players[victim.team];
     owner.respawn = RULES.hero.respawn[owner.tier - 1];
-    owner.level = Math.max(levelFloor(owner.tier), owner.level - RULES.hero.deathLevels); refreshStats(w, victim.team);
+    owner.level = Math.max(1, owner.level - RULES.hero.deathLevels); refreshStats(w, victim.team);
     owner.xp = 0; owner.rallyUntil = 0;
     for (const r of w.regiments.filter(r => r.team === victim.team)) r.cohesion = clamp(r.cohesion - COHESION.heroDeathLoss, 0, 100);
     notify(w, `${TEAMS[victim.team].name} commander fell. Respawning in ${owner.respawn}s.`);
@@ -105,10 +123,11 @@ export function stepCombat(w: World, dt: number) {
     if (enemy && d <= attackRange) {
       u.facing = Math.atan2(enemy.x - u.x, enemy.z - u.z);
       if (u.attackTimer === 0) {
-        const charge = u.kind === 'knight' && r?.engagement === 'charge' && u.travel > 8;
+        const charge = u.kind === 'knight' && r?.engagement === 'charge' && u.travel > 8 && !bracedAgainst(w, enemy, u);
         const warcry = hero && w.players[u.team].warcryUntil > w.time && distance(hero, u) < ABILITIES.warcry.radius;
         const aura = hero && isTroop(u.kind) && distance(u, hero) < 18 ? 1 + w.players[u.team].training.command * 0.05 : 1;
-        const damage = (u.kind === 'hero' && u.garrison === undefined && (melee || d < 2.5) ? u.meleeDamage : u.damage) * (charge ? r?.formation === 'wedge' ? 2.4 : 1.8 : 1) * (warcry ? 1.2 + abilityRank(w.players[u.team], 'warcry') * 0.1 : 1) * aura * (u.garrison !== undefined ? GATES.damageBonus : 1);
+        const meleeAttack = u.kind === 'boss' || u.kind === 'footman' || u.kind === 'knight' || u.kind === 'hero' && u.garrison === undefined && (melee || d < 2.5);
+        const damage = (u.kind === 'hero' && u.garrison === undefined && (melee || d < 2.5) ? u.meleeDamage : u.damage) * ordinaryAttackModifier(w, u, enemy, meleeAttack) * (charge ? r?.formation === 'wedge' ? 2.4 : 1.8 : 1) * (warcry ? 1.2 + abilityRank(w.players[u.team], 'warcry') * 0.1 : 1) * aura * (u.garrison !== undefined ? GATES.damageBonus : 1);
         damageUnit(w, enemy, u, damage);
         if (charge) {
           const defender = w.regiments.find(r => r.team === enemy!.team && r.index === enemy!.regiment);
@@ -117,7 +136,6 @@ export function stepCombat(w: World, dt: number) {
         }
         u.travel = 0;
         u.attackTimer = u.cooldown / (rally ? ABILITIES.rally.attackSpeed + (w.players[u.team].skills.rally - 1) * 0.08 : 1);
-        const meleeAttack = u.kind === 'boss' || u.kind === 'footman' || u.kind === 'knight' || u.kind === 'hero' && u.garrison === undefined && (melee || d < 2.5);
         const kind = meleeAttack ? 'melee' : u.kind === 'musketeer' ? 'shot' : 'arrow';
         const duration = kind === 'arrow' ? 0.5 : 0.3;
         w.effects.push({ x: u.x, z: u.z, to: { x: enemy.x, z: enemy.z }, color: TEAMS[u.team]?.color ?? '#ffc872', life: duration, duration, radius: 0.3, kind, source: u.id, target: enemy.id,

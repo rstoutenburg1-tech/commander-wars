@@ -3,7 +3,6 @@ import { distance } from './math';
 import type { World } from './types';
 import { grantLevelPoints } from './skills';
 import { equipmentBonuses, maxMana } from './items';
-export const levelFloor = (tier: number) => (tier - 1) * 10 + 1;
 export const xpRequired = (level: number) => level * RULES.hero.xpPerLevel;
 export function refreshStats(w: World, team: number) {
   const p = w.players[team]; if (!p) return;
@@ -11,9 +10,10 @@ export function refreshStats(w: World, team: number) {
   for (const u of w.units) {
     if (u.team !== team || u.kind === 'gate') continue;
     const s = STATS[u.kind];
-    const factor = u.kind === 'base' ? 1 + (p.tier - 1) * 0.5 : u.kind === 'hero'
-      ? 1 + (p.tier - 1) * 0.9 + (p.level - levelFloor(p.tier)) * 0.04
-      : 1 + (p.tier - 1) * 0.22 + (p.level - 1) * 0.018;
+    // Keep tiers open technology; combat experience grows the hero. Army
+    // upgrades stay small enough for composition and positioning to counter them.
+    const factor = u.kind === 'base' ? 1 + (p.tier - 1) * 0.25 : u.kind === 'hero'
+      ? 1 + (p.level - 1) * 0.025 : 1 + (p.tier - 1) * 0.08;
     const ratio = u.hp / u.maxHp;
     const troop = isTroop(u.kind);
     u.maxHp = s.hp * factor * (u.kind === 'hero' ? 1 + p.skills.resilience * 0.1 : troop ? 1 + p.skills.discipline * 0.05 : 1) + (u.kind === 'hero' ? gear.hp + p.training.vitality * 250 : 0);
