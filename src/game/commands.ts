@@ -1,5 +1,4 @@
 import type { Order, Point, World } from './types';
-import { projectWalkable } from './navigation';
 export function commandRegiment(w: World, team: number, index: number, order: Order, point?: Point, target?: number) {
   const r = w.regiments.find(r => r.team === team && r.index === index)!;
   const troops = w.units.filter(u => u.team === team && u.regiment === index && u.kind !== 'hero' && u.kind !== 'base');
@@ -24,23 +23,4 @@ export function command(w: World, ids: Set<number>, order: Order, point?: Point,
     if (order === 'hold') u.goal = { x: u.x, z: u.z };
     if (order === 'retreat') { const base = w.units.find(b => b.team === 0 && b.kind === 'base'); if (base) u.goal = { x: base.x * 0.85, z: base.z * 0.85 }; }
   });
-}
-// Relative goals steer each selected group without pulling separate regiments into one formation.
-export function steerSelection(w: World, ids: Set<number>, direction: Point) {
-  if (w.paused || w.winner !== null) return;
-  const length = Math.hypot(direction.x, direction.z); if (!length) return;
-  const offset = { x: direction.x / length * 6, z: direction.z / length * 6 };
-  const units = w.units.filter(u => ids.has(u.id) && u.team === 0 && u.hp > 0 && u.kind !== 'base');
-  const full = new Set<number>();
-  for (const index of new Set(units.filter(u => u.kind !== 'hero').map(u => u.regiment))) {
-    const members = w.units.filter(u => u.team === 0 && u.hp > 0 && u.regiment === index && u.kind !== 'hero' && u.kind !== 'base');
-    if (!members.every(u => ids.has(u.id))) continue;
-    const r = w.regiments.find(r => r.team === 0 && r.index === index)!;
-    commandRegiment(w, 0, index, 'move', projectWalkable({ x: r.anchor.x + offset.x, z: r.anchor.z + offset.z })); full.add(index);
-  }
-  for (const u of units) {
-    if (u.kind !== 'hero' && full.has(u.regiment)) continue;
-    u.tactical = true; u.order = 'move'; u.target = undefined;
-    u.goal = projectWalkable({ x: u.x + offset.x, z: u.z + offset.z });
-  }
 }

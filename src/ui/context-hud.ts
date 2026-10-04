@@ -8,6 +8,7 @@ import { levelFloor, refreshStats, xpRequired } from '../game/hero';
 import { merchant, startCraft, inSafeZone } from '../game/objectives';
 import { spawn } from '../game/world';
 import { ABILITY_KEYS, learnedAbilities, syncAbilityBindings } from '../game/hotkeys';
+import { selectedRegiments } from '../game/formations';
 import type { World, Formation, Engagement, Priority, Order } from '../game/types';
 import type { Input } from '../view/input';
 const setText = (id: string, value: string) => { const e = document.getElementById(id); if (e && e.textContent !== value) e.textContent = value; };
@@ -22,7 +23,7 @@ export class HUD {
   private upgrade(building: Building) { return `<div class="upgrade"><button data-upgrade="${building}"></button><small id="upgrade-cost"></small><p id="upgrade-reason"></p><div id="construction"></div></div>`; }
   private renderContext(key: string) {
     this.context = key; const w = this.w, s = selectedStructure(w, this.input.selected);
-    const common = `<div class="buttons quick-select"><button data-select="base">K · Keep</button><button data-select="barracks">B · Barracks</button><button data-action="hero">Tab · Hero</button><button data-action="army">0 · Troops</button></div><h2>Regiments · 1–9</h2><div class="regiments">${Array.from({ length: RULES.regimentCount }, (_, i) => `<button data-regiment="${i}"></button>`).join('')}</div><p>Ctrl + number: assign selected troops · Shift + number: add regiment.</p>`;
+    const common = `<div class="buttons quick-select"><button data-select="base">K · Keep</button><button data-select="barracks">B · Barracks</button><button data-action="hero">Tab · Hero</button><button data-action="army">0 · Troops</button></div><h2>Regiments · 1–9</h2><div class="regiments">${Array.from({ length: RULES.regimentCount }, (_, i) => `<button data-regiment="${i}"></button>`).join('')}</div><p>Ctrl + number: assign selected troops · Shift + number: add regiment.</p><div id="quick-formations"><h2>Formation</h2><div class="formation-buttons">${Object.entries(FORMATIONS).map(([id, f], i) => `<button data-formation="${id}" title="${f.name}: F${i + 2}" aria-pressed="false"><strong>F${i + 2}</strong>${f.name}</button>`).join('')}</div><p id="formation-status"></p></div>`;
     let content = '';
     if (s) {
       content = `<h2 id="selection-name"></h2><p id="selection-stats"></p>`;
@@ -37,8 +38,8 @@ export class HUD {
     } else {
       const units = w.units.filter(u => this.input.selected.has(u.id));
       content = `<h2 id="selection-name">${units.length ? 'Selected army' : 'Select a unit or building'}</h2><p id="selection-stats"></p>`;
-      if (units.length) content += `<p>WASD: steer selection · Arrows: pan · X: attack cursor · Enter: move to cursor · Space: focus</p><div class="buttons"><button data-order="advance">X · Attack cursor</button><button data-order="hold">H · Hold</button><button data-order="follow">F · Follow</button><button data-order="retreat">T · Retreat</button></div><h2>Abilities</h2><div id="abilities"></div><details><summary>Change ability hotkeys</summary><div id="ability-bindings"></div></details><button data-select="base">Open keep: hero levels & skills</button><h2>Regiment settings</h2><p id="regiment-status"></p><button data-action="assign">Assign selected troops to regiment</button>
-        <label>Formation <select id="formation">${Object.entries(FORMATIONS).map(([id, f]) => `<option value="${id}">${f.name}</option>`).join('')}</select></label><label>Movement <select id="movement"><option value="hold">Hold</option><option value="follow">Follow commander</option><option value="advance">Advance</option><option value="move">Move</option><option value="retreat">Retreat</option><option value="attack">Attack target</option></select></label><label>Engagement <select id="engagement"><option value="aggressive">Aggressive</option><option value="defensive">Defensive</option><option value="charge">Charge</option></select></label><label>Priority <select id="priority"><option value="closest">Closest</option><option value="hero">Hero first</option><option value="ranged">Ranged first</option></select></label>`;
+      if (units.length) content += `<p>WASD: move cursor · Arrows: pan · X: attack cursor · Enter: move to cursor · Space: focus</p><div class="buttons"><button data-order="advance">X · Attack cursor</button><button data-order="hold">H · Hold</button><button data-order="follow">F · Follow</button><button data-order="retreat">T · Retreat</button></div><h2>Abilities</h2><div id="abilities"></div><details><summary>Change ability hotkeys</summary><div id="ability-bindings"></div></details><button data-select="base">Open keep: hero levels & skills</button><details><summary>Advanced regiment settings</summary><p id="regiment-status"></p><button data-action="assign">Assign selected troops to regiment</button>
+        <label>Movement <select id="movement"><option value="hold">Hold</option><option value="follow">Follow commander</option><option value="advance">Advance</option><option value="move">Move</option><option value="retreat">Retreat</option><option value="attack">Attack target</option></select></label><label>Engagement <select id="engagement"><option value="aggressive">Aggressive</option><option value="defensive">Defensive</option><option value="charge">Charge</option></select></label><label>Priority <select id="priority"><option value="closest">Closest</option><option value="hero">Hero first</option><option value="ranged">Ranged first</option></select></label></details>`;
       else content += `<p>Click your keep for hero progression and upgrades. Click the barracks for troop production. Each resource site has its own extraction controls.</p>`;
       content += `<details><summary>Central objectives</summary><p id="boss-status"></p><button data-action="boss">Attack boss with selected</button><p id="merchant-status"></p><button data-trade="buy">Buy healing · 90 gold</button><button data-trade="sell-sword">Sell sword · 100 gold</button><button data-trade="sell-armor">Sell armor · 130 gold</button></details>`;
     }
@@ -57,6 +58,7 @@ export class HUD {
     if (b.dataset.craft) startCraft(w, 0, b.dataset.craft as 'sword' | 'armor');
     if (b.dataset.trade) merchant(w, b.dataset.trade as 'buy' | 'sell-sword' | 'sell-armor');
     if (b.dataset.regiment !== undefined) { this.editingRegiment = Number(b.dataset.regiment); this.input.selectRegiment(this.editingRegiment); }
+    if (b.dataset.formation) this.input.setFormation(b.dataset.formation as Formation);
     if (b.dataset.order === 'advance') this.input.attackAtCursor();
     else if (b.dataset.order) command(w, new Set([...this.input.selected].filter(id => b.dataset.order !== 'follow' || w.units.find(u => u.id === id)?.kind !== 'hero')), b.dataset.order as Order);
     if (b.dataset.action === 'hero') this.input.selectHero(); if (b.dataset.action === 'army') this.input.selectArmy();
@@ -77,7 +79,7 @@ export class HUD {
       if (field.id === 'reserve') p.production.reserve = Math.max(0, Math.min(5000, Number(field.value) || 0));
       if (field.id === 'spawn-regiment') p.production.regiment = Number(field.value);
     }
-    if (field.id === 'formation') r.formation = field.value as Formation; if (field.id === 'engagement') r.engagement = field.value as Engagement;
+    if (field.id === 'engagement') r.engagement = field.value as Engagement;
     if (field.id === 'priority') r.priority = field.value as Priority; if (field.id === 'movement') commandRegiment(this.w, 0, r.index, field.value as Order);
     if (field.id === 'speed') this.speed = Number(field.value);
     if (field.tagName === 'SELECT') field.blur(); this.update();
@@ -96,6 +98,13 @@ export class HUD {
     for (const id of this.input.selected) if (!w.units.some(u => u.id === id && u.hp > 0) && !w.structures.some(s => s.id === id && !p.eliminated)) this.input.selected.delete(id);
     const s = selectedStructure(w, this.input.selected), selected = w.units.filter(u => this.input.selected.has(u.id)), key = s ? `building-${s.id}-${this.keepTab}` : selected.length ? 'units' : 'none';
     if (key !== this.context) this.renderContext(key);
+    const formationGroups = selectedRegiments(w, this.input.selected, this.input.activeRegiment);
+    const formationPanel = document.querySelector<HTMLElement>('#quick-formations')!; formationPanel.hidden = !formationGroups.length || p.eliminated;
+    document.querySelectorAll<HTMLButtonElement>('[data-formation]').forEach(b => {
+      const active = !!formationGroups.length && formationGroups.every(r => r.formation === b.dataset.formation);
+      b.classList.toggle('active', active); b.setAttribute('aria-pressed', String(active)); b.disabled = w.winner !== null;
+    });
+    setText('formation-status', formationGroups.length ? `${formationGroups.length === 1 ? `Regiment ${formationGroups[0].index + 1}` : `${formationGroups.length} selected regiments`} · ${formationGroups.every(r => r.formation === formationGroups[0].formation) ? FORMATIONS[formationGroups[0].formation].name : 'Mixed formations'}` : '');
     document.querySelectorAll<HTMLButtonElement>('[data-regiment]').forEach(b => {
       const index = Number(b.dataset.regiment), troops = w.units.filter(u => u.team === 0 && u.kind !== 'hero' && u.kind !== 'base' && u.regiment === index);
       b.textContent = `${index + 1} · ${troops.length}`; b.title = `Regiment ${index + 1}: ${troops.length} troops. Ctrl+${index + 1} assigns selection.`;
@@ -138,7 +147,7 @@ export class HUD {
       if (abilities.getAttribute('data-list') !== learned.join(',')) { abilities.innerHTML = learned.length ? learned.map(a => `<button data-ability="${a}"></button>`).join('') : '<p>Choose your first skill at the keep.</p>'; abilities.setAttribute('data-list', learned.join(',')); }
       document.querySelectorAll<HTMLButtonElement>('[data-ability]').forEach(b => { const a = b.dataset.ability as Ability; b.textContent = `${this.input.abilityBindings[a]?.toUpperCase() ?? 'Unassigned'} · ${ABILITIES[a].name} ${p.skills[a]} · ${p.cooldowns[a] > 0 ? `${Math.ceil(p.cooldowns[a])}s` : `${ABILITIES[a].cost} mana`}`; b.disabled = !hero || w.paused || p.mana < ABILITIES[a].cost || p.cooldowns[a] > 0; });
       const r = w.regiments.find(r => r.team === 0 && r.index === this.editingRegiment)!; setText('regiment-status', `Regiment ${r.index + 1} · Cohesion ${Math.round(r.cohesion)}%`);
-      for (const k of ['formation', 'movement', 'engagement', 'priority'] as const) this.field(k, r[k]);
+      for (const k of ['movement', 'engagement', 'priority'] as const) this.field(k, r[k]);
     }
     setText('items-status', p.craft ? `Crafting ${ITEMS[p.craft.item].name} · ${Math.ceil(p.craft.remaining)}s` : `Equipment: ${p.items.sword ? 'sword ' : ''}${p.items.armor ? 'armor' : ''}${!p.items.sword && !p.items.armor ? 'none' : ''}`);
     document.querySelectorAll<HTMLButtonElement>('[data-craft]').forEach(b => { const id = b.dataset.craft as 'sword' | 'armor', c = ITEMS[id].cost; b.disabled = p.crafting < 1 || !!p.craft || p.items[id] || p.gold < c.gold || p.wood < c.wood || p.ore < c.ore; });
@@ -147,7 +156,7 @@ export class HUD {
     const boss = w.units.find(u => u.kind === 'boss'); setText('boss-status', boss ? `Iron Golem · ${Math.ceil(boss.hp)} HP · contestable arena` : 'Iron Golem defeated');
     document.querySelector('#scores')!.innerHTML = w.players.map(p => `<p>${TEAMS[p.id].name}: ${p.eliminated ? 'eliminated' : `Tier ${p.tier} · Lv ${p.level}`}</p>`).join('');
     document.querySelector('#log')!.innerHTML = w.events.map(e => `<p>${e}</p>`).join(''); this.field('speed', this.speed);
-    setText('selected', this.input.activeRegiment !== null && !selected.length ? `Regiment ${this.input.activeRegiment + 1} is empty · Select troops with 0, then Ctrl+${this.input.activeRegiment + 1} to assign` : 'Tab: hero · 1–9: regiments · 0: troops · WASD: move · Arrows: camera · X: attack · Enter: move · P: pause');
+    setText('selected', this.input.activeRegiment !== null && !selected.length ? `Regiment ${this.input.activeRegiment + 1} is empty · Select troops with 0, then Ctrl+${this.input.activeRegiment + 1} to assign` : 'WASD: cursor · Arrows: camera · X: attack · Enter: move · Tab: hero · 1–9: regiments · F2/F3/F4: formations');
     setText('time', `${Math.floor(w.time / 60)}:${String(Math.floor(w.time % 60)).padStart(2, '0')}`); setText('pause', w.paused ? 'Resume' : 'Pause');
     if (w.winner !== null) { const outcome = document.querySelector<HTMLElement>('#outcome')!; outcome.hidden = false; if (!outcome.innerHTML) { outcome.innerHTML = `<h1>${w.winner === 0 ? 'Victory' : 'Defeat'}</h1><button id="restart">New match</button>`; document.querySelector('#restart')!.addEventListener('click', () => location.reload()); } }
   }

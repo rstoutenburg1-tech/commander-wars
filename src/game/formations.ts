@@ -16,6 +16,15 @@ export function formationSlot(formation: Formation, i: number, n: number, facing
   }
   return { x: side * Math.cos(facing) + back * Math.sin(facing), z: -side * Math.sin(facing) + back * Math.cos(facing) };
 }
+export function selectedRegiments(w: World, ids: Set<number>, activeIndex: number | null = null) {
+  const indices = new Set(w.units.filter(u => ids.has(u.id) && u.team === 0 && u.hp > 0 && u.kind !== 'hero' && u.kind !== 'base').map(u => u.regiment));
+  if (!indices.size && activeIndex !== null) indices.add(activeIndex);
+  return w.regiments.filter(r => r.team === 0 && indices.has(r.index));
+}
+export function setSelectionFormation(w: World, ids: Set<number>, formation: Formation, activeIndex: number | null = null) {
+  if (w.winner !== null || w.players[0].eliminated) return;
+  for (const r of selectedRegiments(w, ids, activeIndex)) r.formation = formation;
+}
 export function stepRegiments(w: World, dt: number) {
   for (const r of w.regiments) {
     const troops = w.units.filter(u => u.team === r.team && u.regiment === r.index && u.kind !== 'hero' && u.kind !== 'base' && !u.tactical);

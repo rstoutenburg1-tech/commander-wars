@@ -1,7 +1,8 @@
-import type { World, Unit } from '../game/types';
+import type { World, Unit, Formation } from '../game/types';
 import { ABILITIES, MAP, RULES, type Ability, type Building } from '../game/config';
-import { command, steerSelection } from '../game/commands';
-import { ABILITY_KEYS, bindAbility, learnedAbilities, movementDirection, syncAbilityBindings, type AbilityBindings } from '../game/hotkeys';
+import { command } from '../game/commands';
+import { ABILITY_KEYS, advanceCursor, bindAbility, learnedAbilities, syncAbilityBindings, type AbilityBindings } from '../game/hotkeys';
+import { setSelectionFormation } from '../game/formations';
 import { cast } from '../game/abilities';
 import { inSafeZone } from '../game/objectives';
 import type { Battlefield } from './battlefield';
@@ -10,9 +11,9 @@ export class Input {
   attackMove = false;
   activeRegiment: number | null = null;
   cursorTarget?: Unit;
-  readonly movementKeys = new Set<string>();
+  readonly cursorKeys = new Set<string>();
+  readonly screenCursor = { x: 0.5, y: 0.5 };
   readonly abilityBindings: AbilityBindings = {};
-  private steering = new Set<number>();
   private cursor = document.createElement('div');
   private start?: { x: number; y: number };
   private box = document.createElement('div');
@@ -32,7 +33,6 @@ export class Input {
       view.canvas.setPointerCapture(e.pointerId);
       if (e.button === 0) this.start = { x: e.clientX, y: e.clientY };
       if (e.button === 2) {
-        this.cancelSteering();
         const point = view.ground(e.clientX, e.clientY); const id = view.pick(e.clientX, e.clientY);
         const enemy = w.units.find(u => u.id === id && u.team !== 0);
         if (point) command(w, this.selected, enemy ? 'attack' : 'move', point, enemy?.id);
@@ -48,11 +48,10 @@ export class Input {
       if (e.button !== 0 || !this.start) return;
       const start = this.start; this.start = undefined; this.box.style.display = 'none';
       if (this.attackMove) {
-        this.cancelSteering();
         const p = view.ground(e.clientX, e.clientY); if (p) command(w, this.selected, 'advance', p);
         this.attackMove = false; return;
       }
-      this.cancelSteering(); this.activeRegiment = null;
+      this.activeRegiment = null;
       if (!e.shiftKey) this.selected.clear();
       if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6) {
         for (const u of w.units) {
@@ -78,47 +77,41 @@ export class Input {
         return;
       }
       if (e.ctrlKey) return;
-      if (['w', 'a', 's', 'd'].includes(k)) { e.preventDefault(); if (!w.paused && w.winner === null) this.movementKeys.add(k); return; }
+      if (['w', 'a', 's', 'd'].includes(k)) { e.preventDefault(); this.cursorKeys.add(k); return; }
       if (k.startsWith('arrow')) { e.preventDefault(); view.keys.add(k); return; }
-      if (['tab', ' ', 'home', 'enter', '+', '=', '-', 'f1'].includes(k)) e.preventDefault();
+      if (['tab', ' ', 'home', 'end', 'enter', '+', '=', '-', 'f1', 'f2', 'f3', 'f4'].includes(k)) e.preventDefault();
       if (e.repeat) return;
       if (k === 'x') this.attackAtCursor();
       if (k === 'enter') this.moveAtCursor();
-      if (k === 'h') { this.cancelSteering(); command(w, this.selected, 'hold'); }
-      if (k === 't') { this.cancelSteering(); command(w, this.selected, 'retreat'); }
+      if (k === 'h') command(w, this.selected, 'hold');
+      if (k === 't') command(w, this.selected, 'retreat');
       if (k === 'f') {
-        this.cancelSteering();
         const ids = new Set([...this.selected].filter(id => w.units.find(u => u.id === id)?.kind !== 'hero'));
         command(w, ids, 'follow');
       }
       if (k === 'f1') { e.preventDefault(); this.selectHero(); }
+      if (k === 'f2') this.setFormation('line'); if (k === 'f3') this.setFormation('wall'); if (k === 'f4') this.setFormation('wedge');
       if (k === ' ') this.focusSelection();
       if (k === 'tab') this.selectHero(); if (k === '0') this.selectArmy();
       if (k === 'b') this.selectBuilding('barracks'); if (k === 'k') this.selectBuilding('base');
-      if (k === 'home') { view.zoom = MAP.overviewZoom; view.center({ x: 0, z: 0 }); view.resize(); }
+      if (k === 'home') { view.zoom = MAP.overviewZoom; view.center({ x: 0, z: 0 }); view.resize(); this.centerCursor(); }
+      if (k === 'end') this.centerCursor();
       if (['+', '=', '-'].includes(k)) { view.zoom = Math.max(25, Math.min(MAP.overviewZoom, view.zoom * (k === '-' ? 1.2 : 1 / 1.2))); view.resize(); }
-      if (k === 'p' && w.winner === null) { this.cancelSteering(); w.paused = !w.paused; }
-      if (k === 'escape') { this.cancelSteering(); this.attackMove = false; this.selected.clear(); this.activeRegiment = null; }
+      if (k === 'p' && w.winner === null) w.paused = !w.paused;
+      if (k === 'escape') { this.attackMove = false; this.selected.clear(); this.activeRegiment = null; }
       syncAbilityBindings(w.players[0], this.abilityBindings);
       const ability = learnedAbilities(w.players[0]).find(a => this.abilityBindings[a] === k); if (ability) cast(w, 0, ability);
       this.onKey(k);
     });
     window.addEventListener('keyup', e => {
-      const k = e.key.toLowerCase(); view.keys.delete(k); this.movementKeys.delete(k);
-      const d = movementDirection(this.movementKeys); if (!d.x && !d.z) this.stopSteering();
+      const k = e.key.toLowerCase(); view.keys.delete(k); this.cursorKeys.delete(k);
     });
-    document.addEventListener('focusin', e => { if ((e.target as HTMLElement).matches('input,select,textarea')) { this.cancelSteering(); view.keys.clear(); } });
-    window.addEventListener('blur', () => { this.cancelSteering(); view.keys.clear(); w.paused = true; this.start = undefined; this.box.style.display = 'none'; });
+    document.addEventListener('focusin', e => { if ((e.target as HTMLElement).matches('input,select,textarea')) { this.cursorKeys.clear(); view.keys.clear(); } });
+    window.addEventListener('blur', () => { this.cursorKeys.clear(); view.keys.clear(); w.paused = true; this.start = undefined; this.box.style.display = 'none'; });
   }
-  stepControls() {
-    if (this.w.paused || this.w.winner !== null) { this.cancelSteering(); return; }
-    const direction = movementDirection(this.movementKeys);
-    if (!direction.x && !direction.z) { this.stopSteering(); return; }
-    steerSelection(this.w, this.selected, direction); this.steering = new Set(this.selected);
-  }
-  private stopSteering() { if (this.steering.size) command(this.w, this.steering, 'hold'); this.steering.clear(); }
-  private cancelSteering() { this.stopSteering(); this.movementKeys.clear(); }
-  private cursorPosition() { const r = this.view.canvas.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }
+  centerCursor() { this.screenCursor.x = 0.5; this.screenCursor.y = 0.5; }
+  setFormation(formation: Formation) { setSelectionFormation(this.w, this.selected, formation, this.activeRegiment); }
+  private cursorPosition() { const r = this.view.canvas.getBoundingClientRect(); return { x: r.left + r.width * this.screenCursor.x, y: r.top + r.height * this.screenCursor.y }; }
   private findCursorTarget(): Unit | undefined {
     const p = this.cursorPosition(), r = this.view.canvas.getBoundingClientRect();
     const valid = (u: Unit) => u.team !== 0 && u.hp > 0 && !inSafeZone(u);
@@ -131,39 +124,41 @@ export class Input {
     }
     return nearest;
   }
-  updateCursor() {
-    if (this.w.paused || this.w.winner !== null) this.cancelSteering();
+  updateCursor(dt: number) {
+    const r = this.view.canvas.getBoundingClientRect();
+    Object.assign(this.screenCursor, advanceCursor(this.screenCursor, this.cursorKeys, dt, r.width, r.height));
+    this.cursor.style.left = `${this.screenCursor.x * 100}%`; this.cursor.style.top = `${this.screenCursor.y * 100}%`;
     this.cursorTarget = this.findCursorTarget(); this.cursor.classList.toggle('has-target', !!this.cursorTarget);
     const p = this.cursorPosition(), point = this.view.ground(p.x, p.y);
     this.cursor.querySelector('small')!.textContent = this.cursorTarget ? `X · Attack ${this.cursorTarget.kind} · ${Math.ceil(this.cursorTarget.hp)} HP` : `X · Attack-move / Enter · Move${point ? ` · ${Math.round(point.x)}, ${Math.round(point.z)}` : ''}`;
   }
   attackAtCursor() {
     if (this.w.paused || this.w.winner !== null) return;
-    this.cancelSteering(); this.attackMove = false;
+    this.attackMove = false;
     const p = this.cursorPosition(), point = this.view.ground(p.x, p.y), target = this.findCursorTarget();
     if (point) command(this.w, this.selected, target ? 'attack' : 'advance', target ?? point, target?.id);
   }
   moveAtCursor() {
     if (this.w.paused || this.w.winner !== null) return;
-    this.cancelSteering(); this.attackMove = false;
+    this.attackMove = false;
     const p = this.cursorPosition(), point = this.view.ground(p.x, p.y); if (point) command(this.w, this.selected, 'move', point);
   }
   focusSelection() {
     const units = this.w.units.filter(u => this.selected.has(u.id) && u.hp > 0);
     const site = this.w.structures.find(s => this.selected.has(s.id));
     const point = units.length ? { x: units.reduce((sum, u) => sum + u.x, 0) / units.length, z: units.reduce((sum, u) => sum + u.z, 0) / units.length } : site ?? this.w.units.find(u => u.team === 0 && u.kind === 'hero');
-    if (point) { this.view.zoom = 45; this.view.center(point); this.view.resize(); }
+    if (point) { this.view.zoom = 45; this.view.center(point); this.view.resize(); this.centerCursor(); }
   }
   assignAbility(ability: Ability, key: string) {
     if (!bindAbility(this.w.players[0], this.abilityBindings, ability, key)) return;
     try { localStorage.setItem('commander-wars-ability-keys', JSON.stringify(this.abilityBindings)); } catch { /* Session bindings still work. */ }
   }
-  selectHero() { this.cancelSteering(); this.activeRegiment = null; this.selected.clear(); const u = this.w.units.find(u => u.team === 0 && u.kind === 'hero' && u.hp > 0); if (u) this.selected.add(u.id); }
-  selectBuilding(building: Building) { this.cancelSteering(); this.activeRegiment = null; const s = this.w.structures.find(s => s.team === 0 && s.building === building); this.selected.clear(); if (s && !this.w.players[0].eliminated) this.selected.add(s.id); }
-  selectArmy() { this.cancelSteering(); this.activeRegiment = null; this.selected.clear(); this.w.units.filter(u => u.team === 0 && u.hp > 0 && u.kind !== 'base' && u.kind !== 'hero').forEach(u => this.selected.add(u.id)); }
-  selectRegiment(index: number, add = false) { if (index < 0 || index >= RULES.regimentCount) return; this.cancelSteering(); this.activeRegiment = index; if (!add) this.selected.clear(); this.w.units.filter(u => u.team === 0 && u.hp > 0 && u.regiment === index && u.kind !== 'hero' && u.kind !== 'base').forEach(u => this.selected.add(u.id)); }
+  selectHero() { this.activeRegiment = null; this.selected.clear(); const u = this.w.units.find(u => u.team === 0 && u.kind === 'hero' && u.hp > 0); if (u) this.selected.add(u.id); }
+  selectBuilding(building: Building) { this.activeRegiment = null; const s = this.w.structures.find(s => s.team === 0 && s.building === building); this.selected.clear(); if (s && !this.w.players[0].eliminated) this.selected.add(s.id); }
+  selectArmy() { this.activeRegiment = null; this.selected.clear(); this.w.units.filter(u => u.team === 0 && u.hp > 0 && u.kind !== 'base' && u.kind !== 'hero').forEach(u => this.selected.add(u.id)); }
+  selectRegiment(index: number, add = false) { if (index < 0 || index >= RULES.regimentCount) return; this.activeRegiment = index; if (!add) this.selected.clear(); this.w.units.filter(u => u.team === 0 && u.hp > 0 && u.regiment === index && u.kind !== 'hero' && u.kind !== 'base').forEach(u => this.selected.add(u.id)); }
   assignRegiment(index: number) {
-    if (index < 0 || index >= RULES.regimentCount) return; this.cancelSteering();
+    if (index < 0 || index >= RULES.regimentCount) return;
     const troops = this.w.units.filter(u => this.selected.has(u.id) && u.team === 0 && u.kind !== 'hero' && u.kind !== 'base');
     if (!troops.length) return;
     for (const u of troops) { u.regiment = index; u.tactical = false; u.target = undefined; }

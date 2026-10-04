@@ -9,7 +9,7 @@ import { Minimap } from './ui/minimap';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <header><div><strong>COMMANDER WARS</strong><span class="muted">MECHANICS PROTOTYPE</span></div><div id="resources"></div><button id="pause">Pause</button></header>
-  <main><div id="battlefield"><div class="objective">Destroy the three enemy keeps.<br><small>Tab: hero · 1–9: regiments · WASD: move · Arrows: camera<br>X: attack cursor · Enter: move to cursor · Space: focus selection</small></div><div id="outcome" hidden></div></div><aside id="hud"></aside></main>
+  <main><div id="battlefield"><div class="objective">Destroy the three enemy keeps.<br><small>Tab: hero · 1–9: regiments · WASD: cursor · Arrows: camera<br>X: attack · Enter: move · F2/F3/F4: line/wall/wedge</small></div><div id="outcome" hidden></div></div><aside id="hud"></aside></main>
   <footer><span id="selected"></span><span id="time"></span></footer>`;
 const w = createWorld();
 const view = new Battlefield(document.querySelector('#battlefield')!);
@@ -21,8 +21,8 @@ let last = performance.now(), accumulator = 0, uiTime = 0;
 function frame(now: number) {
   const elapsed = Math.min((now - last) / 1000, 0.1); last = now;
   if (!w.paused && w.winner === null) accumulator += elapsed * hud.speed;
-  while (accumulator >= RULES.tick) { input.stepControls(); step(w, RULES.tick); accumulator -= RULES.tick; }
-  view.pan(elapsed); input.updateCursor(); view.render(w, input.selected, input.cursorTarget?.id);
+  while (accumulator >= RULES.tick) { step(w, RULES.tick); accumulator -= RULES.tick; }
+  view.pan(elapsed); input.updateCursor(elapsed); view.render(w, input.selected, input.cursorTarget?.id);
   if ((uiTime += elapsed) > 0.15) {
     uiTime = 0;
     hud.update();
