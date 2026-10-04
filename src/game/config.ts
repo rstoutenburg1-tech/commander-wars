@@ -1,5 +1,6 @@
-export type Kind = 'hero' | 'footman' | 'archer' | 'musketeer' | 'knight' | 'base' | 'boss';
-export type TroopKind = Exclude<Kind, 'hero' | 'base' | 'boss'>;
+export type Kind = 'hero' | 'footman' | 'archer' | 'musketeer' | 'knight' | 'base' | 'boss' | 'gate';
+export type TroopKind = 'footman' | 'archer' | 'musketeer' | 'knight';
+export const isTroop = (kind: Kind): kind is TroopKind => kind === 'footman' || kind === 'archer' || kind === 'musketeer' || kind === 'knight';
 export interface Stats { hp: number; damage: number; range: number; speed: number; cooldown: number; cost: number; xp: number; radius: number }
 export const STATS: Record<Kind, Stats> = {
   hero: { hp: 1800, damage: 45, range: 7, speed: 4.5, cooldown: 1.1, cost: 0, xp: 180, radius: 1 },
@@ -9,6 +10,7 @@ export const STATS: Record<Kind, Stats> = {
   knight: { hp: 420, damage: 37, range: 2.2, speed: 4.8, cooldown: 1.6, cost: 55, xp: 48, radius: 0.8 },
   base: { hp: 6500, damage: 32, range: 15, speed: 0, cooldown: 1.7, cost: 0, xp: 300, radius: 4 },
   boss: { hp: 9000, damage: 70, range: 3.4, speed: 2, cooldown: 1.8, cost: 0, xp: 1400, radius: 2.5 },
+  gate: { hp: 12000, damage: 0, range: 0, speed: 0, cooldown: 1, cost: 0, xp: 150, radius: 2 },
 };
 export const MAP = {
   half: 125, baseHalf: 26, arenaHalf: 50, laneWidth: 24, overviewZoom: 250,
@@ -28,6 +30,14 @@ export const RULES = {
   ai: { thinkInterval: 3, firstAttack: 150, baseAssault: 360, minAttackArmy: 12, retreatHp: 0.3, defendRadius: 32 },
 };
 export interface Cost { gold: number; wood: number; ore: number }
+export const GATES = { toggleGold: 20, repair: { gold: 400, wood: 100, ore: 100 }, tower: { gold: 900, wood: 150, ore: 120 }, towerTime: 30, capacity: 3, rangeBonus: 6, damageBonus: 1.25, mitigation: 0.35 };
+export const OUTPOSTS = {
+  barracks: { cost: { gold: 350, wood: 80, ore: 60 }, time: 25 },
+  goldmine: { cost: { gold: 300, wood: 60, ore: 40 }, time: 20 },
+  forest: { cost: { gold: 180, wood: 20, ore: 0 }, time: 15 },
+  quarry: { cost: { gold: 200, wood: 20, ore: 30 }, time: 15 },
+};
+export type OutpostBuilding = keyof typeof OUTPOSTS;
 export type Building = 'base' | 'barracks' | 'crafting' | 'goldmine' | 'forest' | 'quarry';
 export interface Upgrade { cost: Cost; time: number; requiresTier: number }
 export const UPGRADES: Record<Building, Record<number, Upgrade>> = {

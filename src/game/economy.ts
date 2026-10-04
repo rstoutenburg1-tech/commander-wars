@@ -1,4 +1,4 @@
-import { MAP, RULES, STATS, troopKinds, UPGRADES, type Building, type Cost } from './config';
+import { MAP, RULES, STATS, troopKinds, UPGRADES, isTroop, type Building, type Cost } from './config';
 import type { Player, World } from './types';
 import { notify, spawn } from './world';
 import { levelFloor, refreshStats } from './hero';
@@ -45,7 +45,7 @@ export function stepEconomy(w: World, dt: number) {
     prod.timer -= dt;
     if (prod.timer > 0) continue;
     prod.timer += prod.interval;
-    let count = w.units.filter(u => u.team === p.id && u.kind !== 'hero' && u.kind !== 'base').length;
+    let count = w.units.filter(u => u.team === p.id && u.hp > 0 && isTroop(u.kind)).length;
     let spawned = 0, skipped = 0;
     for (const kind of troopKinds) {
       if (!unlocked(p, kind)) continue;

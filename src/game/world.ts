@@ -2,6 +2,7 @@ import { MAP, RULES, STATS, SKILLS, type Kind, type SkillId } from './config';
 import type { World, Unit, Point } from './types';
 import { refreshStats } from './hero';
 import { createStructures } from './structures';
+import { gatePosition } from './gates';
 export function spawn(w: World, team: number, kind: Kind, pos: Point, regiment = 0): Unit {
   const s = STATS[kind];
   const unit: Unit = { ...pos, id: w.nextId++, team, kind, hp: s.hp, maxHp: s.hp, damage: s.damage, meleeDamage: s.damage,
@@ -11,7 +12,7 @@ export function spawn(w: World, team: number, kind: Kind, pos: Point, regiment =
 }
 export function createWorld(): World {
   const w: World = { time: 0, units: [], players: [], effects: [], events: ['Develop forest + quarry, build workshop, then advance to Tier II.'], nextId: 1, winner: null, paused: false,
-    regiments: [], structures: [], aiEnabled: true, invulnerable: false, bossTimer: 0, merchantGold: 250 };
+    regiments: [], structures: [], gates: [], territories: MAP.bases.map((_, site) => ({ site, owner: site, captured: false, buildings: { barracks: 0, goldmine: 0, forest: 0, quarry: 0 }, spawnTimer: RULES.spawnInterval, regiment: 0 })), aiEnabled: true, invulnerable: false, bossTimer: 0, merchantGold: 250 };
   MAP.bases.forEach((base, team) => {
     w.players.push({ id: team, gold: RULES.startingGold, wood: RULES.startingWood, ore: RULES.startingOre,
       level: 1, xp: 0, respawn: 0, eliminated: false, tier: 1, barracks: 1, crafting: 0, goldmine: 1, forest: 0, quarry: 0,
@@ -25,6 +26,8 @@ export function createWorld(): World {
       anchor: { x: base.x * 0.82, z: base.z * 0.82 }, goal: { x: base.x * 0.82, z: base.z * 0.82 } });
     spawn(w, team, 'base', base);
     createStructures(w, team);
+    const gate = spawn(w, team, 'gate', gatePosition(team)); gate.facing = Math.atan2(base.x, base.z);
+    w.gates.push({ id: gate.id, site: team, owner: team, open: team === 0, tower: false, towerRemaining: 0, garrison: [] });
     spawn(w, team, 'hero', { x: base.x * 0.92, z: base.z * 0.92 });
     for (let i = 0; i < RULES.startingFootmen; i++) {
       spawn(w, team, 'footman', { x: base.x * 0.82 + (i % 4) * 1.7 - 2.5, z: base.z * 0.82 + Math.floor(i / 4) * 1.7 });

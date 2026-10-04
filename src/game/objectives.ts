@@ -24,7 +24,7 @@ export function stepObjectives(w: World, dt: number) {
   }
   const boss = w.units.find(u => u.kind === 'boss');
   if (!boss) return;
-  const nearby = w.units.filter(u => u.team < 4 && u.kind !== 'base' && !inSafeZone(u) && distance(u, MAP.boss) <= MAP.boss.radius && distance(u, boss) < BOSS.smashRadius);
+  const nearby = w.units.filter(u => u.hp > 0 && u.team < 4 && u.kind !== 'base' && u.kind !== 'gate' && !inSafeZone(u) && distance(u, MAP.boss) <= MAP.boss.radius && distance(u, boss) < BOSS.smashRadius);
   if (!nearby.length) { w.bossTimer = Math.max(0, w.bossTimer - dt); return; }
   w.bossTimer += dt;
   // One-second visible warning gives the commander time to leave the smash radius.

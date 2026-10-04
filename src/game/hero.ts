@@ -1,4 +1,4 @@
-import { RULES, STATS, MAP } from './config';
+import { RULES, STATS, MAP, isTroop } from './config';
 import { distance } from './math';
 import type { World } from './types';
 import { grantLevelPoints } from './skills';
@@ -9,13 +9,13 @@ export function refreshStats(w: World, team: number) {
   const p = w.players[team]; if (!p) return;
   const gear = equipmentBonuses(p);
   for (const u of w.units) {
-    if (u.team !== team) continue;
+    if (u.team !== team || u.kind === 'gate') continue;
     const s = STATS[u.kind];
     const factor = u.kind === 'base' ? 1 + (p.tier - 1) * 0.5 : u.kind === 'hero'
       ? 1 + (p.tier - 1) * 0.9 + (p.level - levelFloor(p.tier)) * 0.04
       : 1 + (p.tier - 1) * 0.22 + (p.level - 1) * 0.018;
     const ratio = u.hp / u.maxHp;
-    const troop = u.kind !== 'hero' && u.kind !== 'base';
+    const troop = isTroop(u.kind);
     u.maxHp = s.hp * factor * (u.kind === 'hero' ? 1 + p.skills.resilience * 0.1 : troop ? 1 + p.skills.discipline * 0.05 : 1) + (u.kind === 'hero' ? gear.hp + p.training.vitality * 250 : 0);
     u.hp = u.maxHp * ratio;
     u.damage = (s.damage * factor + (u.kind === 'hero' ? gear.ranged + p.training.warfare * 5 : 0)) * (u.kind === 'hero' ? 1 + p.skills.martial * 0.08 : troop ? 1 + p.skills.inspiration * 0.05 : 1);

@@ -1,11 +1,10 @@
 import * as THREE from 'three';
 import { MAP, STATS, TEAMS } from '../game/config';
-import type { Effect, Point, Unit, World, Structure } from '../game/types';
-import { buildingLevel } from '../game/economy';
-import { buildingNames } from '../game/structures';
+import type { Effect, Point, Unit, World, Structure, Gate } from '../game/types';
+import { buildingNames, structureLevel } from '../game/structures';
 import { clamp } from '../game/math';
 
-interface UnitView { root: THREE.Group; ring: THREE.Mesh; bar: THREE.Group; fill: THREE.Mesh }
+interface UnitView { root: THREE.Group; ring: THREE.Mesh; bar: THREE.Group; fill: THREE.Mesh; gateState?: string }
 export class Battlefield {
   readonly renderer = new THREE.WebGLRenderer({ antialias: true });
   readonly scene = new THREE.Scene();
@@ -17,7 +16,7 @@ export class Battlefield {
   private ray = new THREE.Raycaster();
   private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private views = new Map<number, UnitView>();
-  private buildings = new Map<number, { root: THREE.Group; ring: THREE.Mesh; level: number }>();
+  private buildings = new Map<number, { root: THREE.Group; ring: THREE.Mesh; level: number; team: number }>();
   private effects = new Map<Effect, THREE.Object3D>();
   private materials = new Map<string, THREE.MeshLambertMaterial>();
   private ringGeometry = new THREE.RingGeometry(0.85, 1, 28);
@@ -112,7 +111,7 @@ export class Battlefield {
     const r = this.canvas.getBoundingClientRect();
     return { x: r.left + (v.x + 1) * r.width / 2, y: r.top + (1 - v.y) * r.height / 2 };
   }
-  private createUnit(u: Unit): UnitView {
+  private createUnit(u: Unit, gate?: Gate): UnitView {
     const root = new THREE.Group(); root.userData.id = u.id;
     const color = TEAMS[u.team]?.color ?? '#e09a55';
     if (u.kind === 'base') {
@@ -122,6 +121,21 @@ export class Battlefield {
         this.shape(root, this.cone, color, [x, 6.5, z], [1.6, 2, 1.6]);
       }
       this.shape(root, this.cube, color, [0, 4.5, 0], [2.5, 2, 2.5]);
+    } else if (u.kind === 'gate') {
+      for (const x of [-13, 13]) {
+        this.shape(root, this.cube, '#aaa489', [x, 2.5, 0], [2.5, 5, 3]);
+        this.shape(root, this.cone, color, [x, 5.8, 0], [2.4, 2, 2.4]);
+      }
+      if (gate?.open) { for (const x of [-11, 11]) this.shape(root, this.cube, '#8d6d46', [x, 2.2, 0], [2, 4.4, 1]); }
+      else {
+        this.shape(root, this.cube, '#8d6d46', [0, 2.2, 0], [24, 4.4, 1.1]);
+        this.shape(root, this.cube, '#647277', [0, 1.4, 0.6], [24, 0.3, 0.15]);
+        this.shape(root, this.cube, '#647277', [0, 3, 0.6], [24, 0.3, 0.15]);
+      }
+      if (gate?.tower) {
+        this.shape(root, this.cube, '#b3a787', [0, 6, 0], [24, 1, 4]);
+        for (const x of [-11, -7, -3, 1, 5, 9]) this.shape(root, this.cube, color, [x, 7, 2], [1.5, 1.3, 1]);
+      }
     } else if (u.kind === 'boss') {
       this.shape(root, this.helmet, '#807e71', [0, 2, 0], [5, 5, 3]);
       this.shape(root, this.cube, '#f1a248', [0, 4.6, 0.5], [1.8, 1.1, 1.3]);
@@ -150,18 +164,23 @@ export class Battlefield {
     }
     const ring = new THREE.Mesh(this.ringGeometry, new THREE.MeshBasicMaterial({ color: '#b9fff5', side: THREE.DoubleSide }));
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.15; ring.scale.setScalar(STATS[u.kind].radius * 1.6); root.add(ring);
-    const bar = new THREE.Group(); bar.position.y = u.kind === 'base' ? 8.5 : u.kind === 'boss' ? 6 : 3;
-    const width = u.kind === 'base' ? 6 : u.kind === 'boss' ? 5 : 1.8;
+    const bar = new THREE.Group(); bar.position.y = u.kind === 'base' ? 8.5 : u.kind === 'gate' ? 9 : u.kind === 'boss' ? 6 : 3;
+    const width = u.kind === 'base' ? 6 : u.kind === 'gate' ? 10 : u.kind === 'boss' ? 5 : 1.8;
     this.shape(bar, this.cube, '#27312f', [0, 0, 0], [width, 0.18, 0.05]);
     const fill = this.shape(bar, this.cube, color, [0, 0, 0.04], [width, 0.14, 0.05]);
     fill.userData.width = width; root.add(bar);
-    this.scene.add(root); return { root, ring, bar, fill };
+    this.scene.add(root); return { root, ring, bar, fill, gateState: gate ? `${gate.open}:${gate.tower}:${u.team}` : undefined };
   }
   private createBuilding(s: Structure, level: number) {
     const root = new THREE.Group(); root.userData.id = s.id; root.position.set(s.x, 0, s.z);
-    const team = TEAMS[s.team].color, color = level ? team : '#82918b';
+    const team = TEAMS[s.team].color, color = level || s.building === 'base' ? team : '#82918b';
     this.shape(root, this.cube, '#737b67', [0, 0.15, 0], [9, 0.4, 8]);
-    if (s.building === 'barracks') {
+    if (s.building === 'base') {
+      this.shape(root, this.cube, '#777767', [0, 0.8, 0], [6, 1.5, 5]);
+      this.shape(root, this.cylinder, '#7a8080', [-2, 1.8, 0], [1.2, 3.5, 1.2]);
+      this.shape(root, this.cube, color, [0, 4, 0], [2, 1.5, 0.3]);
+      this.shape(root, this.cylinder, '#d2c9ae', [0, 2.3, 0], [0.15, 5, 0.15]);
+    } else if (s.building === 'barracks') {
       this.shape(root, this.cube, '#b3a88a', [0, 1.8, 0], [6, 3.5, 4]);
       this.shape(root, this.cone, color, [0, 4.4, 0], [5, 3, 4]);
       this.shape(root, this.cube, '#493e31', [0, 1.2, 2.1], [2, 2.2, 0.2]);
@@ -179,17 +198,17 @@ export class Battlefield {
     const ring = new THREE.Mesh(this.ringGeometry, new THREE.MeshBasicMaterial({ color: '#b9fff5', side: THREE.DoubleSide }));
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.45; ring.scale.setScalar(5.5); root.add(ring);
     const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 48;
-    const c = canvas.getContext('2d')!; c.fillStyle = '#16272dda'; c.fillRect(0, 0, 256, 48); c.font = '24px system-ui'; c.textAlign = 'center'; c.fillStyle = '#f5eacb'; c.fillText(buildingNames[s.building], 128, 32);
+    const c = canvas.getContext('2d')!; c.fillStyle = '#16272dda'; c.fillRect(0, 0, 256, 48); c.font = '24px system-ui'; c.textAlign = 'center'; c.fillStyle = '#f5eacb'; c.fillText(s.building === 'base' ? 'Captured territory' : buildingNames[s.building], 128, 32);
     const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false })); label.position.set(0, 6, 0); label.scale.set(8, 1.5, 1); root.add(label);
-    this.scene.add(root); return { root, ring, level };
+    this.scene.add(root); return { root, ring, level, team: s.team };
   }
   render(w: World, selected: Set<number>, cursorTarget?: number) {
-    for (const [id, b] of this.buildings) if (w.players[w.structures.find(s => s.id === id)!.team].eliminated || b.level !== buildingLevel(w.players[w.structures.find(s => s.id === id)!.team], w.structures.find(s => s.id === id)!.building)) {
+    for (const [id, b] of this.buildings) if (w.players[w.structures.find(s => s.id === id)!.team].eliminated || b.team !== w.structures.find(s => s.id === id)!.team || b.level !== structureLevel(w, w.structures.find(s => s.id === id)!)) {
       this.scene.remove(b.root); b.root.traverse(o => { if (o instanceof THREE.Sprite) { o.material.map?.dispose(); o.material.dispose(); } }); (b.ring.material as THREE.Material).dispose(); this.buildings.delete(id);
     }
     for (const s of w.structures) {
-      if (s.building === 'base' || w.players[s.team].eliminated) continue;
-      let b = this.buildings.get(s.id); if (!b) { b = this.createBuilding(s, buildingLevel(w.players[s.team], s.building)); this.buildings.set(s.id, b); }
+      if (s.building === 'base' && !w.territories[s.site].captured || w.players[s.team].eliminated) continue;
+      let b = this.buildings.get(s.id); if (!b) { b = this.createBuilding(s, structureLevel(w, s)); this.buildings.set(s.id, b); }
       b.ring.visible = selected.has(s.id);
     }
     const ids = new Set(w.units.map(u => u.id));
@@ -198,8 +217,10 @@ export class Battlefield {
     }
     for (const u of w.units) {
       let v = this.views.get(u.id);
-      if (!v) { v = this.createUnit(u); this.views.set(u.id, v); }
-      v.root.position.set(u.x, 0, u.z);
+      const gate = u.kind === 'gate' ? w.gates.find(g => g.id === u.id) : undefined;
+      if (v && gate && v.gateState !== `${gate.open}:${gate.tower}:${u.team}`) { this.scene.remove(v.root); (v.ring.material as THREE.Material).dispose(); this.views.delete(u.id); v = undefined; }
+      if (!v) { v = this.createUnit(u, gate); this.views.set(u.id, v); }
+      v.root.position.set(u.x, u.garrison !== undefined ? 6.5 : 0, u.z);
       if (u.kind !== 'base') v.root.rotation.y = u.facing;
       v.ring.visible = selected.has(u.id) || u.id === cursorTarget;
       (v.ring.material as THREE.MeshBasicMaterial).color.set(u.id === cursorTarget ? '#ff916e' : '#b9fff5');

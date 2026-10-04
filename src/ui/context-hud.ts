@@ -1,4 +1,4 @@
-import { ABILITIES, FORMATIONS, ITEMS, MAP, RULES, SKILLS, STATS, TEAMS, UPGRADES, SHOP_TOMES, TARGET_PRIORITIES, ranks, troopKinds, type Ability, type Building, type SkillId, type TroopKind, type ItemId, type ItemSlot } from '../game/config';
+import { ABILITIES, FORMATIONS, ITEMS, MAP, RULES, SKILLS, STATS, TEAMS, UPGRADES, SHOP_TOMES, TARGET_PRIORITIES, isTroop, ranks, troopKinds, type Ability, type Building, type SkillId, type TroopKind, type ItemId, type ItemSlot, type OutpostBuilding } from '../game/config';
 import { buildingLevel, cycleCost, startUpgrade, unlocked, upgradeReason } from '../game/economy';
 import { cast } from '../game/abilities';
 import { command, commandRegiment } from '../game/commands';
@@ -11,6 +11,9 @@ import { ABILITY_KEYS, learnedAbilities, syncAbilityBindings } from '../game/hot
 import { selectedRegiments, gatherArmy } from '../game/formations';
 import { atMerchant, abilityRank, buyItem, sellItem, buyConsumable, craftReason, equipItem, unequipItem, maxMana, trainHero, trainingReason, type Training } from '../game/items';
 import { heroProgressionPanel, equipmentPanel, merchantPanel, workshopPanel } from './hero-panels';
+import { gatePanel, territoriesPanel, outpostPanel, updateGatePanel, updateOutpostPanel } from './territory-panels';
+import { toggleGate, repairGate, buildTower, garrisonUnit, leaveTower, gatePosition } from '../game/gates';
+import { buildOutpost } from '../game/outposts';
 import type { World, Formation, Engagement, Priority, Order } from '../game/types';
 import type { Input } from '../view/input';
 const setText = (id: string, value: string) => { const e = document.getElementById(id); if (e && e.textContent !== value) e.textContent = value; };
@@ -25,11 +28,14 @@ export class HUD {
   private upgrade(building: Building) { return `<div class="upgrade"><button data-upgrade="${building}"></button><small id="upgrade-cost"></small><p id="upgrade-reason"></p><div id="construction"></div></div>`; }
   private renderContext(key: string) {
     this.context = key; const w = this.w, s = selectedStructure(w, this.input.selected);
-    const common = `<div class="buttons quick-select"><button data-action="hero">Tab · Hero</button><button data-panel="items">Items</button><button data-select="base">K · Keep</button><button data-select="barracks">B · Barracks</button><button data-select="crafting">Workshop</button><button data-select="goldmine">Gold mine</button><button data-select="quarry">Quarry</button><button data-select="forest">Forest</button><button data-panel="merchant">Merchant</button><button data-action="army">0 · Troops</button></div><h2>Regiments · 1–9</h2><div class="regiments">${Array.from({ length: RULES.regimentCount }, (_, i) => `<button data-regiment="${i}"></button>`).join('')}</div><p>Ctrl + number: assign selected troops · Shift + number: add regiment.</p><div id="quick-formations"><h2>Formation</h2><div class="formation-buttons">${Object.entries(FORMATIONS).map(([id, f], i) => `<button data-formation="${id}" title="${f.name}: F${i + 2}" aria-pressed="false"><strong>F${i + 2}</strong>${f.name}</button>`).join('')}</div><p id="formation-status"></p></div>`;
+    const common = `<div class="buttons quick-select"><button data-action="hero">Tab · Hero</button><button data-panel="items">Items</button><button data-select="base">K · Keep</button><button data-select="barracks">B · Barracks</button><button data-select="crafting">Workshop</button><button data-select="goldmine">Gold mine</button><button data-select="quarry">Quarry</button><button data-select="forest">Forest</button><button data-panel="merchant">Merchant</button><button data-action="army">0 · Troops</button><button data-action="gate">Gate & tower</button><button data-action="territories">Captured bases</button></div><h2>Regiments · 1–9</h2><div class="regiments">${Array.from({ length: RULES.regimentCount }, (_, i) => `<button data-regiment="${i}"></button>`).join('')}</div><p>Ctrl + number: assign selected troops · Shift + number: add regiment.</p><div id="quick-formations"><h2>Formation</h2><div class="formation-buttons">${Object.entries(FORMATIONS).map(([id, f], i) => `<button data-formation="${id}" title="${f.name}: F${i + 2}" aria-pressed="false"><strong>F${i + 2}</strong>${f.name}</button>`).join('')}</div><p id="formation-status"></p></div>`;
     let content = '';
-    if (this.input.sidebarView === 'items') content = equipmentPanel(w.players[0]);
+    if (this.input.sidebarView === 'gate') content = gatePanel(w, this.input.activeGateSite);
+    else if (this.input.sidebarView === 'territories') content = territoriesPanel(w);
+    else if (this.input.sidebarView === 'items') content = equipmentPanel(w.players[0]);
     else if (this.input.sidebarView === 'merchant') content = merchantPanel(w.players[0]);
     else if (this.input.sidebarView === 'hero') content = `<h2 id="selection-name">Hero</h2><p id="selection-stats"></p><h2>Hero command</h2><button data-action="gather">F · Gather army around hero</button><div class="buttons"><button data-escort-layout="ring">Ring</button><button data-escort-layout="vanguard">Vanguard</button><button data-escort-layout="rearguard">Rear guard</button></div><label>March at army speed<input id="march-army" type="checkbox"></label><label>Hero target priority<select id="hero-priority">${Object.entries(TARGET_PRIORITIES).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label><label>Automatic engagement<input id="auto-tracking" type="checkbox"></label><p>Each escort regiment takes a separate position. Give a regiment a move/attack order to operate independently. X overrides automatic targets.</p>${heroProgressionPanel()}<h2>Abilities</h2><div id="abilities"></div>`;
+    else if (s && w.territories[s.site].captured) content = outpostPanel(s.site);
     else if (s) {
       content = `<h2 id="selection-name"></h2><p id="selection-stats"></p>`;
       if (s.building === 'base') content += `${this.upgrade('base')}<p>Keep advancement raises your commander's level cap and minimum level. Select the hero with Tab to manage skills, training and equipment.</p>`;
@@ -51,8 +57,16 @@ export class HUD {
   private click(b: HTMLButtonElement | null) {
     if (!b) return; const w = this.w;
     if (b.dataset.select) this.input.selectBuilding(b.dataset.select as Building);
+    if (b.dataset.gateSite !== undefined) this.input.selectGate(Number(b.dataset.gateSite));
+    if (b.dataset.gateToggle !== undefined) toggleGate(w, Number(b.dataset.gateToggle));
+    if (b.dataset.gateRepair !== undefined) { repairGate(w, Number(b.dataset.gateRepair)); this.input.selectGate(Number(b.dataset.gateRepair)); }
+    if (b.dataset.gateTower !== undefined) buildTower(w, Number(b.dataset.gateTower));
+    if (b.dataset.mount) garrisonUnit(w, this.input.activeGateSite, Number(b.dataset.mount));
+    if (b.dataset.dismount) { const u = w.units.find(u => u.id === Number(b.dataset.dismount) && u.team === 0); if (u) leaveTower(w, u); }
+    if (b.dataset.territory !== undefined) this.input.selectTerritory(Number(b.dataset.territory));
+    if (b.dataset.outpost) buildOutpost(w, Number(b.dataset.site), b.dataset.outpost as OutpostBuilding);
     if (b.dataset.panel) { this.input.selectHero(); this.input.sidebarView = b.dataset.panel as 'items' | 'merchant'; }
-    if (b.dataset.upgrade) { const s = selectedStructure(w, this.input.selected); if (s?.building === b.dataset.upgrade) startUpgrade(w, 0, s.building); }
+    if (b.dataset.upgrade) { const s = selectedStructure(w, this.input.selected); if (s?.site === 0 && s.building === b.dataset.upgrade) startUpgrade(w, 0, s.building); }
     if (b.dataset.skill && this.input.sidebarView === 'hero') trainSkill(w, 0, b.dataset.skill as SkillId);
     if (b.dataset.training && this.input.sidebarView === 'hero') trainHero(w, b.dataset.training as Training);
     if (b.dataset.style) w.players[0].combatStyle = b.dataset.style as 'melee' | 'ranged';
@@ -73,13 +87,16 @@ export class HUD {
     else if (b.dataset.order) command(w, new Set([...this.input.selected].filter(id => b.dataset.order !== 'follow' || w.units.find(u => u.id === id)?.kind !== 'hero')), b.dataset.order as Order);
     if (b.dataset.action === 'hero') this.input.selectHero(); if (b.dataset.action === 'army') this.input.selectArmy();
     if (b.dataset.action === 'gather') gatherArmy(w);
+    if (b.dataset.action === 'gate') this.input.selectGate();
+    if (b.dataset.action === 'territories') { this.input.sidebarView = 'territories'; this.input.selected.clear(); this.input.activeRegiment = null; }
+    if (b.dataset.action === 'travel-gate') { const h = w.units.find(u => u.team === 0 && u.kind === 'hero' && u.hp > 0); if (h) command(w, new Set([h.id]), 'move', gatePosition(this.input.activeGateSite)); }
     if (b.dataset.action === 'travel-merchant') { this.input.selectHero(); command(w, this.input.selected, 'move', MAP.merchant); this.input.sidebarView = 'merchant'; }
     if (b.dataset.action === 'assign') this.input.assignRegiment(this.editingRegiment);
     if (b.dataset.action === 'boss') { const boss = w.units.find(u => u.kind === 'boss'); if (boss) command(w, this.input.selected, 'attack', boss, boss.id); }
     if (b.dataset.debug) this.debug(b.dataset.debug); this.update();
   }
   private changeCount(kind: TroopKind, amount: number) {
-    if (selectedStructure(this.w, this.input.selected)?.building !== 'barracks') return;
+    const selected = selectedStructure(this.w, this.input.selected); if (selected?.site !== 0 || selected.building !== 'barracks') return;
     const p = this.w.players[0], total = Object.values(p.production.counts).reduce((a, b) => a + b, 0);
     if (unlocked(p, kind) && (amount < 0 || total < RULES.maxCycleUnits)) p.production.counts[kind] = Math.max(0, p.production.counts[kind] + amount);
   }
@@ -89,7 +106,8 @@ export class HUD {
     if (field.id === 'hero-priority') { p.heroPriority = field.value as Priority; const hero = this.w.units.find(u => u.team === 0 && u.kind === 'hero'); if (hero) hero.autoTarget = undefined; }
     if (field.id === 'auto-tracking') p.autoTracking = field.checked;
     if (field.id === 'march-army') p.marchWithArmy = field.checked;
-    if (s?.building === 'barracks') {
+    if (field.id === 'outpost-regiment' && s && this.w.territories[s.site].captured) this.w.territories[s.site].regiment = Number(field.value);
+    if (s?.site === 0 && s.building === 'barracks') {
       if (field.id === 'interval') { p.production.interval = Number(field.value); p.production.timer = p.production.interval; }
       if (field.id === 'reserve') p.production.reserve = Math.max(0, Math.min(5000, Number(field.value) || 0));
       if (field.id === 'spawn-regiment') p.production.regiment = Number(field.value);
@@ -114,7 +132,7 @@ export class HUD {
     if (this.input.activeRegiment !== null) this.editingRegiment = this.input.activeRegiment;
     for (const id of this.input.selected) if (!w.units.some(u => u.id === id && u.hp > 0) && !w.structures.some(s => s.id === id && !p.eliminated)) this.input.selected.delete(id);
     const s = selectedStructure(w, this.input.selected), selected = w.units.filter(u => this.input.selected.has(u.id));
-    const pane = this.input.sidebarView, key = pane !== 'selection' ? `${pane}${pane === 'items' || pane === 'merchant' ? JSON.stringify([p.items, p.equipment]) : ''}` : s ? `building-${s.id}` : selected.length ? 'units' : 'none';
+    const pane = this.input.sidebarView, key = pane !== 'selection' ? `${pane}${pane === 'items' || pane === 'merchant' ? JSON.stringify([p.items, p.equipment]) : pane === 'gate' ? `${this.input.activeGateSite}:${JSON.stringify(w.gates.map(g => [g.id, g.owner]))}` : pane === 'territories' ? JSON.stringify(w.territories.map(t => [t.owner, t.captured])) : ''}` : s ? `building-${s.id}-${w.territories[s.site].captured}` : selected.length ? 'units' : 'none';
     if (key !== this.context) this.renderContext(key);
     const formationGroups = selectedRegiments(w, this.input.selected, this.input.activeRegiment);
     const formationPanel = document.querySelector<HTMLElement>('#quick-formations')!; formationPanel.hidden = !formationGroups.length || p.eliminated;
@@ -124,7 +142,7 @@ export class HUD {
     });
     setText('formation-status', formationGroups.length ? `${formationGroups.length === 1 ? `Regiment ${formationGroups[0].index + 1}` : `${formationGroups.length} selected regiments`} · ${formationGroups.every(r => r.formation === formationGroups[0].formation) ? FORMATIONS[formationGroups[0].formation].name : 'Mixed formations'}` : '');
     document.querySelectorAll<HTMLButtonElement>('[data-regiment]').forEach(b => {
-      const index = Number(b.dataset.regiment), troops = w.units.filter(u => u.team === 0 && u.kind !== 'hero' && u.kind !== 'base' && u.regiment === index);
+      const index = Number(b.dataset.regiment), troops = w.units.filter(u => u.team === 0 && u.hp > 0 && isTroop(u.kind) && u.garrison === undefined && u.regiment === index);
       b.textContent = `${index + 1} · ${troops.length}`; b.title = `Regiment ${index + 1}: ${troops.length} troops. Ctrl+${index + 1} assigns selection.`;
       b.classList.toggle('active', this.input.activeRegiment === index || troops.length > 0 && troops.every(u => this.input.selected.has(u.id)));
     });
@@ -137,7 +155,9 @@ export class HUD {
       for (const a of learned) this.field(`bind-${a}`, this.input.abilityBindings[a] ?? '');
     }
     setText('resources', `Gold ${Math.floor(p.gold)} · Wood ${Math.floor(p.wood)} · Ore ${Math.floor(p.ore)}`);
-    if (s) {
+    if (pane === 'gate') updateGatePanel(w, this.input.activeGateSite);
+    if (s && w.territories[s.site].captured) updateOutpostPanel(w, s.site);
+    if (s && !w.territories[s.site].captured) {
       const level = buildingLevel(p, s.building); setText('selection-name', `${buildingNames[s.building]} · ${level ? `Level ${level}` : 'Undeveloped site'}`);
       setText('selection-stats', s.building === 'base' ? `Your ${ranks[p.tier - 1]}'s command center` : 'Selected building · actions apply here');
       const btn = document.querySelector<HTMLButtonElement>('[data-upgrade]');
@@ -149,14 +169,14 @@ export class HUD {
         const bar = document.querySelector<HTMLProgressElement>('#xp-bar'); if (bar) { bar.max = xpRequired(p.level); bar.value = p.level === p.tier * 10 ? bar.max : p.xp; }
         setText('hero-details', hero ? `HP ${Math.ceil(hero.hp)} / ${Math.ceil(hero.maxHp)} · Melee ${Math.round(hero.meleeDamage)} / Ranged ${Math.round(hero.damage)} · Range ${hero.range} · Speed ${hero.speed.toFixed(1)} · Mana ${Math.floor(p.mana)} / ${maxMana(p)}` : `Respawn in ${Math.ceil(p.respawn)}s`);
         setText('skill-points', `${skillPoints(p)} unspent skill points · ${p.abilityOrder.length} / ${activeSlots(p.level)} normal ability slots · ultimate at level 20`);
-        document.querySelectorAll<HTMLButtonElement>('[data-skill]').forEach(b => { const id = b.dataset.skill as SkillId, reason = skillReason(p, id); b.textContent = `${SKILLS[id].name} ${p.skills[id]} / ${SKILLS[id].max} · + rank`; b.disabled = !!reason; setText(`skill-reason-${id}`, reason ?? 'Spend 1 skill point'); });
+        document.querySelectorAll<HTMLButtonElement>('[data-skill]').forEach(b => { const id = b.dataset.skill as SkillId, reason = skillReason(p, id); b.textContent = `${SKILLS[id].name} ${SKILLS[id].active ? abilityRank(p, id as Ability) : p.skills[id]} / ${SKILLS[id].max} · + rank`; b.disabled = !!reason; setText(`skill-reason-${id}`, reason ?? 'Spend 1 skill point'); });
         document.querySelectorAll<HTMLButtonElement>('[data-training]').forEach(b => { const kind = b.dataset.training as Training, next = p.training[kind] + 1; b.textContent = `${kind} ${p.training[kind]} / 3 · ${200 * next}g / ${30 * next}o`; b.disabled = !!trainingReason(p, kind); setText(`training-${kind}`, trainingReason(p, kind) ?? 'Train now'); });
         document.querySelectorAll<HTMLButtonElement>('[data-style]').forEach(b => b.classList.toggle('active', b.dataset.style === p.combatStyle));
         document.querySelectorAll<HTMLButtonElement>('[data-escort-layout]').forEach(b => b.classList.toggle('active', b.dataset.escortLayout === p.escortLayout));
         this.field('hero-priority', p.heroPriority);
         for (const [id, value] of [['auto-tracking', p.autoTracking], ['march-army', p.marchWithArmy]] as const) { const field = document.querySelector<HTMLInputElement>(`#${id}`); if (field) field.checked = value; }
     }
-    if (s) {
+    if (s && !w.territories[s.site].captured) {
       const level = buildingLevel(p, s.building);
       if (s.building === 'barracks') {
         for (const kind of troopKinds) { const btn = document.querySelector<HTMLButtonElement>(`[data-troop="${kind}"]`)!; btn.textContent = `+ ${kind} · ${STATS[kind].cost}g`; btn.disabled = !unlocked(p, kind) || Object.values(p.production.counts).reduce((a, b) => a + b, 0) >= RULES.maxCycleUnits; setText(`count-${kind}`, `${p.production.counts[kind]} per wave`); setText(`unlock-${kind}`, unlocked(p, kind) ? 'Click to add; − to remove' : `Requires Barracks ${kind === 'knight' ? 3 : 2}`); }
@@ -165,7 +185,7 @@ export class HUD {
         this.field('interval', p.production.interval); this.field('reserve', p.production.reserve); this.field('spawn-regiment', p.production.regiment);
       }
       if (['forest', 'quarry', 'goldmine'].includes(s.building)) setText('income-rate', `${RULES.incomeRates[s.building as 'forest' | 'quarry' | 'goldmine'][level]} resources / second`);
-    } else if (selected.length) {
+    } else if (!s && selected.length && pane === 'selection') {
       const troops = selected.filter(u => u.kind !== 'hero'); if (troops.length && troops.every(u => u.regiment === troops[0].regiment)) this.editingRegiment = troops[0].regiment;
       setText('selection-name', selected.length === 1 && selected[0].kind === 'hero' ? `${ranks[p.tier - 1]} · Level ${p.level}` : `${selected.length} units selected`);
       setText('selection-stats', selected.length === 1 ? `HP ${Math.ceil(selected[0].hp)} / ${Math.ceil(selected[0].maxHp)} · Damage ${Math.round(selected[0].damage)} · Mana ${Math.floor(p.mana)}` : 'Right-click to move or attack · Drag to select a group');

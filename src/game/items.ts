@@ -9,7 +9,7 @@ export function equipmentBonuses(p: Player): Required<ItemBonuses> {
   return b;
 }
 export const maxMana = (p: Player) => RULES.hero.mana + equipmentBonuses(p).mana;
-export const abilityRank = (p: Player, ability: Ability) => Math.max(p.skills[ability], p.itemAbilities.includes(ability) ? 1 : 0);
+export const abilityRank = (p: Player, ability: Ability) => p.skills[ability] + (p.itemAbilities.includes(ability) ? 1 : 0);
 export function equipItem(w: World, team: number, id: ItemId) {
   const p = w.players[team]; if (p.eliminated || !p.items[id]) return false;
   p.equipment[ITEMS[id].slot] = id; refreshStats(w, team); p.mana = Math.min(p.mana, maxMana(p)); return true;

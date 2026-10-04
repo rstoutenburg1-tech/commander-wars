@@ -1,8 +1,9 @@
-import { COHESION, FORMATIONS, MAP, STATS, ABILITIES } from './config';
-import { distance, moveToward, clamp } from './math';
+import { COHESION, FORMATIONS, MAP, STATS, ABILITIES, isTroop } from './config';
+import { distance, clamp } from './math';
 import type { Formation, Point, World } from './types';
-import { moveOnMap, projectWalkable } from './navigation';
+import { projectWalkable } from './navigation';
 import { commandRegiment } from './commands';
+import { moveWithGates } from './gates';
 export function escortOffset(layout: 'ring' | 'vanguard' | 'rearguard', index: number, count: number, facing: number): Point {
   const angle = facing + (layout === 'ring' ? index / Math.max(1, count) * Math.PI * 2 : 0);
   if (layout === 'ring') return { x: Math.sin(angle) * 9, z: Math.cos(angle) * 9 };
@@ -11,7 +12,7 @@ export function escortOffset(layout: 'ring' | 'vanguard' | 'rearguard', index: n
 }
 export function gatherArmy(w: World, team = 0) {
   for (const r of w.regiments.filter(r => r.team === team)) {
-    const troops = w.units.filter(u => u.team === team && u.regiment === r.index && u.kind !== 'hero' && u.kind !== 'base');
+    const troops = w.units.filter(u => u.hp > 0 && u.team === team && u.regiment === r.index && isTroop(u.kind) && u.garrison === undefined);
     if (!troops.length) continue;
     r.anchor = { x: troops.reduce((sum, u) => sum + u.x, 0) / troops.length, z: troops.reduce((sum, u) => sum + u.z, 0) / troops.length };
     commandRegiment(w, team, r.index, 'follow');
@@ -32,7 +33,7 @@ export function formationSlot(formation: Formation, i: number, n: number, facing
   return { x: side * Math.cos(facing) + back * Math.sin(facing), z: -side * Math.sin(facing) + back * Math.cos(facing) };
 }
 export function selectedRegiments(w: World, ids: Set<number>, activeIndex: number | null = null) {
-  const indices = new Set(w.units.filter(u => ids.has(u.id) && u.team === 0 && u.hp > 0 && u.kind !== 'hero' && u.kind !== 'base').map(u => u.regiment));
+  const indices = new Set(w.units.filter(u => ids.has(u.id) && u.team === 0 && u.hp > 0 && isTroop(u.kind) && u.garrison === undefined).map(u => u.regiment));
   if (!indices.size && activeIndex !== null) indices.add(activeIndex);
   return w.regiments.filter(r => r.team === 0 && indices.has(r.index));
 }
@@ -42,14 +43,14 @@ export function setSelectionFormation(w: World, ids: Set<number>, formation: For
 }
 export function stepRegiments(w: World, dt: number) {
   for (const r of w.regiments) {
-    const troops = w.units.filter(u => u.team === r.team && u.regiment === r.index && u.kind !== 'hero' && u.kind !== 'base' && !u.tactical);
+    const troops = w.units.filter(u => u.hp > 0 && u.team === r.team && u.regiment === r.index && isTroop(u.kind) && u.garrison === undefined && !u.tactical);
     if (!troops.length) continue;
     // Melee occupies the front slots; ranged troops remain behind the screen.
     troops.sort((a, b) => Number(STATS[a.kind].range > 3) - Number(STATS[b.kind].range > 3) || a.id - b.id);
     const hero = w.units.find(u => u.team === r.team && u.kind === 'hero');
     let goal = r.goal;
     if (r.movement === 'follow' && hero) {
-      const escorts = w.regiments.filter(group => group.team === r.team && group.movement === 'follow' && w.units.some(u => u.team === r.team && u.regiment === group.index && u.kind !== 'hero' && u.kind !== 'base' && !u.tactical));
+      const escorts = w.regiments.filter(group => group.team === r.team && group.movement === 'follow' && w.units.some(u => u.hp > 0 && u.team === r.team && u.regiment === group.index && isTroop(u.kind) && u.garrison === undefined && !u.tactical));
       const offset = escortOffset(w.players[r.team].escortLayout, escorts.indexOf(r), escorts.length, hero.facing);
       goal = projectWalkable({ x: hero.x + offset.x, z: hero.z + offset.z });
     } else if (r.movement === 'follow') goal = r.anchor;
@@ -59,7 +60,7 @@ export function stepRegiments(w: World, dt: number) {
       r.facing = Math.atan2(goal.x - r.anchor.x, goal.z - r.anchor.z);
       const rally = hero && w.players[r.team].rallyUntil > w.time && distance(hero, r.anchor) < ABILITIES.rally.radius;
       const speed = Math.min(...troops.map(u => u.speed)) * FORMATIONS[r.formation].speed * (rally ? ABILITIES.rally.movement : 1);
-      moveOnMap(r.anchor, goal, speed * dt);
+      moveWithGates(w, r.anchor, goal, speed * dt);
     } else if (r.movement === 'follow' && hero) r.facing = hero.facing;
     let separated = 0;
     troops.forEach((u, i) => {

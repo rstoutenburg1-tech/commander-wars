@@ -1,5 +1,6 @@
 import { MAP, type Building } from './config';
 import type { Point, Structure, World } from './types';
+import { buildingLevel } from './economy';
 export const buildingNames: Record<Building, string> = { base: 'Keep', barracks: 'Barracks', crafting: 'Workshop', goldmine: 'Gold Mine', forest: 'Forest', quarry: 'Quarry' };
 export function buildingPosition(team: number, building: Building): Point {
   const b = MAP.bases[team], sx = Math.sign(b.x), sz = Math.sign(b.z);
@@ -12,8 +13,12 @@ export function buildingPosition(team: number, building: Building): Point {
 export function createStructures(w: World, team: number) {
   for (const building of Object.keys(buildingNames) as Building[]) {
     const id = building === 'base' ? w.units.find(u => u.team === team && u.kind === 'base')!.id : w.nextId++;
-    w.structures.push({ id, team, building, ...buildingPosition(team, building) });
+    w.structures.push({ id, team, site: team, building, ...buildingPosition(team, building) });
   }
+}
+export function structureLevel(w: World, s: Structure) {
+  const territory = w.territories[s.site];
+  return territory.captured ? s.building in territory.buildings ? territory.buildings[s.building as keyof typeof territory.buildings] : 0 : buildingLevel(w.players[s.team], s.building);
 }
 export function selectedStructure(w: World, ids: Set<number>): Structure | undefined {
   if (ids.size !== 1) return;

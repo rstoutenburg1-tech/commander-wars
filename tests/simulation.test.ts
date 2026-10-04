@@ -54,7 +54,7 @@ test('three AIs progress and fight during a five-minute simulation', () => {
   for (let i = 0; i < 6000 && w.winner === null; i++) step(w, 0.05);
   assert.ok(w.players.slice(1).some(p => p.tier >= 2)); assert.ok(w.players.slice(1).some(p => p.level > 1 || p.eliminated));
   for (const p of w.players) assert.ok(p.gold >= 0 && p.wood >= 0 && p.ore >= 0);
-  assert.ok(w.units.length <= 4 * 42 + 1); assert.ok(w.units.every(u => Number.isFinite(u.hp) && Number.isFinite(u.x)));
+  assert.ok(w.units.length <= 4 * (RULES.armyCap + 3) + 1); assert.ok(w.units.every(u => Number.isFinite(u.hp) && Number.isFinite(u.x)));
 });
 
 test('shield wall protection depends on frontage and cohesion', () => {

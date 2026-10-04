@@ -1,4 +1,4 @@
-import { ABILITIES, RULES, MAP } from './config';
+import { ABILITIES, RULES, MAP, isTroop } from './config';
 import { distance, clamp } from './math';
 import type { World } from './types';
 import { notify } from './world';
@@ -21,7 +21,7 @@ export function cast(w: World, team: number, ability: keyof typeof ABILITIES) {
   else if (ability === 'standfast') p.standfastUntil = w.time + ABILITIES.standfast.duration;
   else if (ability === 'ultimate') {
     hero.hp = Math.min(hero.maxHp, hero.hp + hero.maxHp * 0.4);
-    for (const u of w.units) if (u.team === team && u.hp > 0 && u.kind !== 'base' && u.kind !== 'hero' && distance(u, hero) < ABILITIES.ultimate.radius) u.hp = Math.min(u.maxHp, u.hp + u.maxHp * 0.25);
+    for (const u of w.units) if (u.team === team && u.hp > 0 && isTroop(u.kind) && distance(u, hero) < ABILITIES.ultimate.radius) u.hp = Math.min(u.maxHp, u.hp + u.maxHp * 0.25);
     for (const r of w.regiments) if (r.team === team && distance(r.anchor, hero) < ABILITIES.ultimate.radius) r.cohesion = 100;
   }
   w.effects.push({ x: hero.x, z: hero.z, life: 0.8, radius: ability === 'rally' ? ABILITIES.rally.radius : 3, color: ability === 'rally' ? '#ffe9a0' : '#8dfaab' });
