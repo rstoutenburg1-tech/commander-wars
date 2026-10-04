@@ -4,7 +4,7 @@ import { clamp } from './math';
 export const ABILITY_KEYS = ['q', 'e', 'r', 'z', 'c', 'v', 'g'] as const;
 export type AbilityKey = typeof ABILITY_KEYS[number];
 export type AbilityBindings = Partial<Record<Ability, AbilityKey | null>>;
-export const learnedAbilities = (p: Player): Ability[] => [...p.abilityOrder, ...(p.skills.ultimate ? ['ultimate' as const] : [])];
+export const learnedAbilities = (p: Player): Ability[] => [...new Set([...p.abilityOrder, ...(p.skills.ultimate ? ['ultimate' as const] : []), ...p.itemAbilities])];
 export interface ScreenCursor { x: number; y: number }
 export function cursorDirection(keys: Set<string>): ScreenCursor {
   const x = Number(keys.has('d')) - Number(keys.has('a')), y = Number(keys.has('s')) - Number(keys.has('w'));

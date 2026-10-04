@@ -103,16 +103,16 @@ test('crafting requires workshop, charges once, equips after five seconds', () =
   const w = createWorld(), p = w.players[0]; p.wood = 100; p.ore = 100;
   assert.equal(startCraft(w, 0, 'sword'), false); p.crafting = 1;
   assert.equal(startCraft(w, 0, 'sword'), true); assert.equal(startCraft(w, 0, 'armor'), false);
-  stepObjectives(w, 4); assert.equal(p.items.sword, false); stepObjectives(w, 1.1); assert.equal(p.items.sword, true);
-  assert.ok(w.units.find(u => u.team === 0 && u.kind === 'hero')!.damage > STATS.hero.damage);
+  stepObjectives(w, 4); assert.equal(!!p.items.sword, false); stepObjectives(w, 1.1); assert.equal(p.items.sword, true);
+  assert.equal(p.equipment.melee, 'sword'); assert.ok(w.units.find(u => u.team === 0 && u.kind === 'hero')!.meleeDamage > STATS.hero.damage * 3);
 });
 test('commander respawns with equipment and death penalty remains after next tick', () => {
   const w = createWorld(), p = w.players[0], hero = w.units.find(u => u.team === 0 && u.kind === 'hero')!, enemy = w.units.find(u => u.team === 1 && u.kind === 'hero')!;
-  p.level = 8; p.xp = 300; p.items.sword = true; p.production.interval = 0; w.aiEnabled = false;
+  p.level = 8; p.xp = 300; p.items.sword = true; p.equipment.melee = 'sword'; p.production.interval = 0; w.aiEnabled = false;
   kill(w, hero, enemy); progressHero(w, 0.05); assert.equal(p.level, 6);
   for (let i = 0; i < (RULES.hero.respawn[0] + 1) * 20; i++) step(w, 0.05);
   const respawn = w.units.find(u => u.team === 0 && u.kind === 'hero')!;
-  assert.ok(respawn); assert.notEqual(respawn.id, hero.id); assert.ok(respawn.damage > STATS.hero.damage);
+  assert.ok(respawn); assert.notEqual(respawn.id, hero.id); assert.equal(p.equipment.melee, 'sword'); assert.ok(respawn.meleeDamage > STATS.hero.damage * 3 + 40);
 });
 test('starting skill is a choice, additional active slots require level gates', () => {
   const w = createWorld(), p = w.players[0];

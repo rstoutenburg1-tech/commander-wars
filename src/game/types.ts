@@ -1,9 +1,9 @@
-import type { Kind, Building, TroopKind, SkillId, Ability } from './config';
+import type { Kind, Building, TroopKind, SkillId, Ability, ItemId, ItemSlot } from './config';
 export interface Point { x: number; z: number }
 export type Order = 'move' | 'advance' | 'hold' | 'attack' | 'follow' | 'retreat';
 export interface Unit extends Point {
   id: number; team: number; kind: Kind; hp: number; maxHp: number;
-  damage: number; speed: number; range: number; cooldown: number; attackTimer: number;
+  damage: number; meleeDamage: number; speed: number; range: number; cooldown: number; attackTimer: number;
   order: Order; goal: Point; target?: number; facing: number; regiment: number; travel: number; tactical: boolean;
 }
 export interface Effect extends Point { to?: Point; color: string; life: number; radius: number }
@@ -14,7 +14,9 @@ export interface Player {
   production: { interval: number; counts: Record<TroopKind, number>; reserve: number; timer: number; regiment: number; status: string };
   mana: number; rallyUntil: number; warcryUntil: number; standfastUntil: number; cooldowns: Record<Ability, number>; aiTimer: number; aiState: string;
   highestLevel: number; skills: Record<SkillId, number>; abilityOrder: Ability[];
-  bankedXP: number; items: { sword: boolean; armor: boolean }; craft?: { item: 'sword' | 'armor'; remaining: number };
+  bankedXP: number; items: Partial<Record<ItemId, boolean>>; equipment: Partial<Record<ItemSlot, ItemId>>; itemAbilities: Ability[];
+  combatStyle: 'melee' | 'ranged'; training: { warfare: number; vitality: number; command: number };
+  craft?: { item: ItemId; remaining: number };
 }
 export type Formation = 'line' | 'wall' | 'wedge';
 export type Engagement = 'aggressive' | 'defensive' | 'charge';

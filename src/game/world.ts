@@ -4,7 +4,7 @@ import { refreshStats } from './hero';
 import { createStructures } from './structures';
 export function spawn(w: World, team: number, kind: Kind, pos: Point, regiment = 0): Unit {
   const s = STATS[kind];
-  const unit: Unit = { ...pos, id: w.nextId++, team, kind, hp: s.hp, maxHp: s.hp, damage: s.damage,
+  const unit: Unit = { ...pos, id: w.nextId++, team, kind, hp: s.hp, maxHp: s.hp, damage: s.damage, meleeDamage: s.damage,
     speed: s.speed, range: s.range, cooldown: s.cooldown, attackTimer: 0,
     order: 'hold', goal: { ...pos }, facing: 0, regiment, travel: 0, tactical: false };
   w.units.push(unit); refreshStats(w, team); return unit;
@@ -19,7 +19,7 @@ export function createWorld(): World {
       mana: RULES.hero.mana, rallyUntil: 0, warcryUntil: 0, standfastUntil: 0,
       cooldowns: { rally: 0, wind: 0, cleave: 0, warcry: 0, standfast: 0, ultimate: 0 },
       highestLevel: 1, skills: Object.fromEntries(Object.keys(SKILLS).map(id => [id, 0])) as Record<SkillId, number>, abilityOrder: [],
-      aiTimer: 0, aiState: 'Muster', bankedXP: 0, items: { sword: false, armor: false } });
+      aiTimer: 0, aiState: 'Muster', bankedXP: 0, items: {}, equipment: {}, itemAbilities: [], combatStyle: 'melee', training: { warfare: 0, vitality: 0, command: 0 } });
     for (let index = 0; index < RULES.regimentCount; index++) w.regiments.push({ team, index, formation: 'line', movement: 'hold', engagement: 'aggressive', priority: 'closest', cohesion: 100, facing: Math.atan2(-base.x, -base.z),
       anchor: { x: base.x * 0.82, z: base.z * 0.82 }, goal: { x: base.x * 0.82, z: base.z * 0.82 } });
     spawn(w, team, 'base', base);

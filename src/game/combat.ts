@@ -5,6 +5,7 @@ import { notify, spawn } from './world';
 import { levelFloor, refreshStats } from './hero';
 import { inSafeZone } from './objectives';
 import { moveOnMap, walkable, projectWalkable } from './navigation';
+import { abilityRank, equipmentBonuses } from './items';
 export function damageUnit(w: World, victim: Unit, attacker: Unit, amount: number) {
   if (victim.hp <= 0 || inSafeZone(victim) || inSafeZone(attacker) || w.invulnerable && victim.team === 0) return;
   const r = w.regiments.find(r => r.team === victim.team && r.index === victim.regiment);
@@ -13,9 +14,9 @@ export function damageUnit(w: World, victim: Unit, attacker: Unit, amount: numbe
     const reduction = victim.kind === 'footman' ? FORMATIONS[r.formation].frontalReduction : FORMATIONS[r.formation].frontalReduction * 0.25;
     amount *= 1 - reduction * r.cohesion / 100;
   }
-  if (victim.kind === 'hero' && w.players[victim.team].items.armor) amount *= 0.85;
+  if (victim.kind === 'hero') amount *= 1 - equipmentBonuses(w.players[victim.team]).mitigation;
   const defender = w.players[victim.team], commander = w.units.find(u => u.team === victim.team && u.kind === 'hero' && u.hp > 0);
-  if (defender && commander && defender.standfastUntil > w.time && distance(victim, commander) < ABILITIES.standfast.radius) amount *= 1 - (0.2 + defender.skills.standfast * 0.05);
+  if (defender && commander && defender.standfastUntil > w.time && distance(victim, commander) < ABILITIES.standfast.radius) amount *= 1 - (0.2 + abilityRank(defender, 'standfast') * 0.05);
   victim.hp -= amount;
   if (victim.kind === 'boss' && w.players[attacker.team]) w.players[attacker.team].xp += Math.min(amount, victim.hp + amount) * 0.025;
   if (victim.hp <= 0) kill(w, victim, attacker);
@@ -69,12 +70,13 @@ export function stepCombat(w: World, dt: number) {
       }
     }
     const d = enemy ? distance(u, enemy) - STATS[enemy.kind].radius : Infinity;
-    if (enemy && d <= u.range) {
+    const melee = u.kind === 'hero' && w.players[u.team].combatStyle === 'melee', attackRange = melee ? 2.5 : u.range;
+    if (enemy && d <= attackRange) {
       u.facing = Math.atan2(enemy.x - u.x, enemy.z - u.z);
       if (u.attackTimer === 0) {
         const charge = u.kind === 'knight' && r?.engagement === 'charge' && u.travel > 8;
         const warcry = hero && w.players[u.team].warcryUntil > w.time && distance(hero, u) < ABILITIES.warcry.radius;
-        const damage = u.damage * (u.kind === 'hero' && d < 2.5 ? 1.5 : charge ? r?.formation === 'wedge' ? 2.4 : 1.8 : 1) * (warcry ? 1.2 + w.players[u.team].skills.warcry * 0.1 : 1);
+        const damage = (u.kind === 'hero' && (melee || d < 2.5) ? u.meleeDamage : u.damage) * (charge ? r?.formation === 'wedge' ? 2.4 : 1.8 : 1) * (warcry ? 1.2 + abilityRank(w.players[u.team], 'warcry') * 0.1 : 1);
         damageUnit(w, enemy, u, damage);
         if (charge) {
           const defender = w.regiments.find(r => r.team === enemy!.team && r.index === enemy!.regiment);

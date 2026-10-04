@@ -1,29 +1,15 @@
 import { BOSS, COHESION, ITEMS, MAP } from './config';
 import { distance, clamp } from './math';
-import { afford, pay } from './economy';
-import { refreshStats } from './hero';
+import { buyConsumable, sellItem, grantItem } from './items';
+export { startCraft } from './items';
 import { damageUnit } from './combat';
 import { notify } from './world';
 import type { Unit, World } from './types';
 export const inSafeZone = (u: Unit) => distance(u, MAP.merchant) < MAP.merchant.radius;
-export function startCraft(w: World, team: number, item: 'sword' | 'armor') {
-  const p = w.players[team], recipe = ITEMS[item];
-  if (p.eliminated || p.crafting < 1 || p.craft || p.items[item] || !afford(p, recipe.cost)) return false;
-  pay(p, recipe.cost); p.craft = { item, remaining: recipe.craftTime }; return true;
-}
 export function merchant(w: World, action: 'buy' | 'sell-sword' | 'sell-armor') {
   const p = w.players[0], hero = w.units.find(u => u.team === 0 && u.kind === 'hero');
   if (!hero || !inSafeZone(hero)) { notify(w, 'Move your commander into the merchant safe zone.'); return false; }
-  if (action === 'buy') {
-    if (p.gold < ITEMS.potion.buy) return false;
-    p.gold -= ITEMS.potion.buy; w.merchantGold += ITEMS.potion.buy;
-    hero.hp = Math.min(hero.maxHp, hero.hp + hero.maxHp * ITEMS.potion.heal);
-  } else {
-    const item = action === 'sell-sword' ? 'sword' : 'armor';
-    if (!p.items[item] || w.merchantGold < ITEMS[item].sell) return false;
-    p.items[item] = false; p.gold += ITEMS[item].sell; w.merchantGold -= ITEMS[item].sell; refreshStats(w, 0);
-  }
-  return true;
+  return action === 'buy' ? buyConsumable(w, 'healing') : sellItem(w, action === 'sell-sword' ? 'sword' : 'armor');
 }
 export function stepObjectives(w: World, dt: number) {
   w.merchantGold += dt;
@@ -31,8 +17,8 @@ export function stepObjectives(w: World, dt: number) {
     if (!p.craft || p.eliminated) continue;
     p.craft.remaining -= dt;
     if (p.craft.remaining <= 0) {
-      p.items[p.craft.item] = true; refreshStats(w, p.id);
-      if (p.id === 0) notify(w, `${ITEMS[p.craft.item].name} equipped.`);
+      grantItem(w, p.id, p.craft.item);
+      if (p.id === 0) notify(w, `${ITEMS[p.craft.item].name} crafted. Manage equipment in Items.`);
       p.craft = undefined;
     }
   }

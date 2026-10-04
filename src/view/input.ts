@@ -10,6 +10,7 @@ export class Input {
   readonly selected = new Set<number>();
   attackMove = false;
   activeRegiment: number | null = null;
+  sidebarView: 'selection' | 'hero' | 'items' | 'merchant' = 'hero';
   cursorTarget?: Unit;
   readonly cursorKeys = new Set<string>();
   readonly screenCursor = { x: 0.5, y: 0.5 };
@@ -27,7 +28,7 @@ export class Input {
       const seen = new Set<string>();
       for (const ability of Object.keys(this.abilityBindings) as Ability[]) { const key = this.abilityBindings[ability]; if (key && seen.has(key)) delete this.abilityBindings[ability]; else if (key) seen.add(key); }
     } catch { /* Preferences are optional when storage is unavailable. */ }
-    const keep = w.units.find(u => u.team === 0 && u.kind === 'base'); if (keep) this.selected.add(keep.id);
+    const hero = w.units.find(u => u.team === 0 && u.kind === 'hero'); if (hero) this.selected.add(hero.id);
     view.canvas.addEventListener('contextmenu', e => e.preventDefault());
     view.canvas.addEventListener('pointerdown', e => {
       view.canvas.setPointerCapture(e.pointerId);
@@ -51,7 +52,7 @@ export class Input {
         const p = view.ground(e.clientX, e.clientY); if (p) command(w, this.selected, 'advance', p);
         this.attackMove = false; return;
       }
-      this.activeRegiment = null;
+      this.activeRegiment = null; this.sidebarView = 'selection';
       if (!e.shiftKey) this.selected.clear();
       if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6) {
         for (const u of w.units) {
@@ -62,6 +63,7 @@ export class Input {
       } else {
         const id = view.pick(e.clientX, e.clientY);
         if (id !== undefined && (w.units.find(u => u.id === id)?.team === 0 || w.structures.find(s => s.id === id)?.team === 0)) this.selected.add(id);
+        if (this.selected.size === 1 && w.units.find(u => u.id === id)?.kind === 'hero') this.sidebarView = 'hero';
       }
     });
     view.canvas.addEventListener('wheel', e => { e.preventDefault(); view.zoom = Math.max(25, Math.min(MAP.overviewZoom, view.zoom + e.deltaY * 0.08)); view.resize(); }, { passive: false });
@@ -153,10 +155,10 @@ export class Input {
     if (!bindAbility(this.w.players[0], this.abilityBindings, ability, key)) return;
     try { localStorage.setItem('commander-wars-ability-keys', JSON.stringify(this.abilityBindings)); } catch { /* Session bindings still work. */ }
   }
-  selectHero() { this.activeRegiment = null; this.selected.clear(); const u = this.w.units.find(u => u.team === 0 && u.kind === 'hero' && u.hp > 0); if (u) this.selected.add(u.id); }
-  selectBuilding(building: Building) { this.activeRegiment = null; const s = this.w.structures.find(s => s.team === 0 && s.building === building); this.selected.clear(); if (s && !this.w.players[0].eliminated) this.selected.add(s.id); }
-  selectArmy() { this.activeRegiment = null; this.selected.clear(); this.w.units.filter(u => u.team === 0 && u.hp > 0 && u.kind !== 'base' && u.kind !== 'hero').forEach(u => this.selected.add(u.id)); }
-  selectRegiment(index: number, add = false) { if (index < 0 || index >= RULES.regimentCount) return; this.activeRegiment = index; if (!add) this.selected.clear(); this.w.units.filter(u => u.team === 0 && u.hp > 0 && u.regiment === index && u.kind !== 'hero' && u.kind !== 'base').forEach(u => this.selected.add(u.id)); }
+  selectHero() { this.sidebarView = 'hero'; this.activeRegiment = null; this.selected.clear(); const u = this.w.units.find(u => u.team === 0 && u.kind === 'hero' && u.hp > 0); if (u) this.selected.add(u.id); }
+  selectBuilding(building: Building) { this.sidebarView = 'selection'; this.activeRegiment = null; const s = this.w.structures.find(s => s.team === 0 && s.building === building); this.selected.clear(); if (s && !this.w.players[0].eliminated) this.selected.add(s.id); }
+  selectArmy() { this.sidebarView = 'selection'; this.activeRegiment = null; this.selected.clear(); this.w.units.filter(u => u.team === 0 && u.hp > 0 && u.kind !== 'base' && u.kind !== 'hero').forEach(u => this.selected.add(u.id)); }
+  selectRegiment(index: number, add = false) { if (index < 0 || index >= RULES.regimentCount) return; this.sidebarView = 'selection'; this.activeRegiment = index; if (!add) this.selected.clear(); this.w.units.filter(u => u.team === 0 && u.hp > 0 && u.regiment === index && u.kind !== 'hero' && u.kind !== 'base').forEach(u => this.selected.add(u.id)); }
   assignRegiment(index: number) {
     if (index < 0 || index >= RULES.regimentCount) return;
     const troops = this.w.units.filter(u => this.selected.has(u.id) && u.team === 0 && u.kind !== 'hero' && u.kind !== 'base');

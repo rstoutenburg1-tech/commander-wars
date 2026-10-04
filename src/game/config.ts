@@ -2,7 +2,7 @@ export type Kind = 'hero' | 'footman' | 'archer' | 'musketeer' | 'knight' | 'bas
 export type TroopKind = Exclude<Kind, 'hero' | 'base' | 'boss'>;
 export interface Stats { hp: number; damage: number; range: number; speed: number; cooldown: number; cost: number; xp: number; radius: number }
 export const STATS: Record<Kind, Stats> = {
-  hero: { hp: 1200, damage: 30, range: 5, speed: 4, cooldown: 1.15, cost: 0, xp: 180, radius: 1 },
+  hero: { hp: 1800, damage: 45, range: 7, speed: 4.5, cooldown: 1.1, cost: 0, xp: 180, radius: 1 },
   footman: { hp: 240, damage: 13, range: 1.8, speed: 2.4, cooldown: 1.7, cost: 16, xp: 16, radius: 0.6 },
   archer: { hp: 145, damage: 18, range: 9, speed: 3.3, cooldown: 1.8, cost: 22, xp: 22, radius: 0.5 },
   musketeer: { hp: 110, damage: 32, range: 13, speed: 2.7, cooldown: 2.5, cost: 36, xp: 32, radius: 0.5 },
@@ -40,7 +40,7 @@ export const UPGRADES: Record<Building, Record<number, Upgrade>> = {
     2: { cost: { gold: 180, wood: 40, ore: 30 }, time: 15, requiresTier: 2 },
     3: { cost: { gold: 320, wood: 80, ore: 60 }, time: 25, requiresTier: 3 },
   },
-  crafting: { 1: { cost: { gold: 70, wood: 25, ore: 15 }, time: 15, requiresTier: 1 } },
+  crafting: { 1: { cost: { gold: 70, wood: 25, ore: 15 }, time: 15, requiresTier: 1 }, 2: { cost: { gold: 400, wood: 80, ore: 100 }, time: 25, requiresTier: 2 } },
   goldmine: {
     2: { cost: { gold: 250, wood: 40, ore: 30 }, time: 15, requiresTier: 2 },
     3: { cost: { gold: 400, wood: 80, ore: 60 }, time: 25, requiresTier: 3 },
@@ -90,9 +90,23 @@ export const SKILLS: Record<SkillId, SkillSpec> = {
   ultimate: { name: "Commander's Resolve", branch: 'Ultimate', description: 'Restore 40% hero HP, 25% nearby troop HP and full cohesion.', max: 1, level: 20, tier: 2, active: true },
 };
 export const BOSS = { smashInterval: 8, smashRadius: 10, smashDamage: 90, gold: 650, ore: 100 };
+export type ItemSlot = 'melee' | 'ranged' | 'armor' | 'boots' | 'charm';
+export interface ItemBonuses { melee?: number; ranged?: number; hp?: number; mitigation?: number; speed?: number; range?: number; mana?: number; manaRegen?: number; hpRegen?: number }
+export interface ItemSpec { name: string; slot: ItemSlot; description: string; buy: number; sell: number; bonuses: ItemBonuses; tier?: number; cost?: Cost; craftTime?: number }
 export const ITEMS = {
-  sword: { name: 'Longsword', cost: { gold: 0, wood: 40, ore: 35 }, sell: 100, craftTime: 5 },
-  armor: { name: 'Reinforced armor', cost: { gold: 90, wood: 0, ore: 50 }, sell: 130, craftTime: 5 },
-  potion: { name: 'Healing draught', buy: 90, heal: 0.4 },
-};
+  sword: { name: 'Longsword', slot: 'melee', description: '+40 melee damage', buy: 220, sell: 100, bonuses: { melee: 40 }, tier: 1, cost: { gold: 0, wood: 40, ore: 35 }, craftTime: 5 },
+  armor: { name: 'Reinforced armor', slot: 'armor', description: '+400 HP, 15% damage reduction', buy: 300, sell: 130, bonuses: { hp: 400, mitigation: 0.15 }, tier: 1, cost: { gold: 90, wood: 0, ore: 50 }, craftTime: 5 },
+  bow: { name: 'Hunter bow', slot: 'ranged', description: '+25 ranged damage, +2 range', buy: 300, sell: 140, bonuses: { ranged: 25, range: 2 }, tier: 1, cost: { gold: 60, wood: 70, ore: 20 }, craftTime: 8 },
+  boots: { name: 'Pathfinder boots', slot: 'boots', description: '+25% movement speed', buy: 350, sell: 150, bonuses: { speed: 0.25 }, tier: 1, cost: { gold: 100, wood: 35, ore: 25 }, craftTime: 8 },
+  amulet: { name: 'Mana amulet', slot: 'charm', description: '+40 mana, +1 mana/s', buy: 400, sell: 180, bonuses: { mana: 40, manaRegen: 1 }, tier: 1, cost: { gold: 130, wood: 20, ore: 60 }, craftTime: 10 },
+  captainblade: { name: 'Captain blade', slot: 'melee', description: '+100 melee damage', buy: 850, sell: 350, bonuses: { melee: 100 }, tier: 2, cost: { gold: 300, wood: 80, ore: 140 }, craftTime: 18 },
+  runicarmor: { name: 'Runic plate', slot: 'armor', description: '+800 HP, 25% reduction, +2 HP/s', buy: 1100, sell: 500, bonuses: { hp: 800, mitigation: 0.25, hpRegen: 2 }, tier: 2, cost: { gold: 380, wood: 80, ore: 160 }, craftTime: 20 },
+  kingsblade: { name: 'Kingbreaker', slot: 'melee', description: '+240 melee damage, +300 HP', buy: 2400, sell: 1000, bonuses: { melee: 240, hp: 300 } },
+  dragonbow: { name: 'Dragonbone bow', slot: 'ranged', description: '+130 ranged damage, +7 range', buy: 2600, sell: 1100, bonuses: { ranged: 130, range: 7 } },
+  bulwark: { name: 'Titan bulwark', slot: 'armor', description: '+1600 HP, 40% damage reduction', buy: 2800, sell: 1200, bonuses: { hp: 1600, mitigation: 0.4 } },
+  archmage: { name: 'Archmage sigil', slot: 'charm', description: '+140 mana, +5 mana/s, +5 HP/s', buy: 2100, sell: 900, bonuses: { mana: 140, manaRegen: 5, hpRegen: 5 } },
+} satisfies Record<string, ItemSpec>;
+export type ItemId = keyof typeof ITEMS;
+export const POTION = { name: 'Healing draught', buy: 90, heal: 0.4 };
+export const SHOP_TOMES = { warcry: { name: 'War Cry tome', buy: 1600 }, standfast: { name: 'Stand Fast tome', buy: 2000 } };
 export const troopKinds: TroopKind[] = ['footman', 'archer', 'musketeer', 'knight'];

@@ -70,3 +70,8 @@ h3 { font-size: 13px; color: #d8c899; margin: 8px 0; }
 .keyboard-cursor small { position: absolute; top: 20px; left: 0; transform: translateX(-50%); white-space: nowrap; color: inherit; background: #14272de0; padding: 3px 6px; }
 .keyboard-cursor.has-target { color: #ffad87; }
 .ability-binding select { min-width: 80px; }
+.quick-select { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.item-card, .equipped-slot { padding: 9px; margin: 8px 0; border: 1px solid #4d6563; background: #243a3e; }
+.item-card small, .equipped-slot small, .equipped-slot span { display: block; }
+.equipped-slot strong { color: #d8c899; text-transform: capitalize; }
+button.active { border-color: #a2dfcd; background: #406461; }
