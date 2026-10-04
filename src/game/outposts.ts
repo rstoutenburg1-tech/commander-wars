@@ -31,9 +31,7 @@ export function stepOutposts(w: World, dt: number) {
       if (count >= RULES.armyCap || p.gold - STATS[kind].cost < p.production.reserve) continue;
       p.gold -= STATS[kind].cost;
       const pos = buildingPosition(t.site, 'barracks'); pos.x += (count % 4) * 1.8; pos.z += 6;
-      const u = spawn(w, p.id, kind, pos, t.regiment); const r = w.regiments.find(r => r.team === p.id && r.index === t.regiment)!;
-      if (w.units.filter(u => u.team === p.id && u.regiment === t.regiment && isTroop(u.kind)).length === 1) r.anchor = { ...pos };
-      u.order = r.movement; count++;
+      spawn(w, p.id, kind, pos, t.regiment); count++;
     }
   }
 }

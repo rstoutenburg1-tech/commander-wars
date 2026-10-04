@@ -78,9 +78,12 @@ test('paid command training buffs nearby troops and the hero march toggle contro
 });
 test('army escorts occupy distinct positions and an independent regiment detaches', () => {
   const w = createWorld(), h = w.units.find(u => u.team === 0 && u.kind === 'hero')!;
-  h.x = 0; h.z = 0; h.facing = 0;
+  Object.assign(h, { x: 0, z: 0, facing: 0, goal: { x: 0, z: 0 }, order: 'hold' });
+  w.units = w.units.filter(u => u.team === 0);
   const troops = w.units.filter(u => u.team === 0 && u.kind === 'footman'); troops.slice(2).forEach(u => u.regiment = 1);
-  gatherArmy(w); for (let i = 0; i < 2000; i++) stepRegiments(w, 0.05);
+  gatherArmy(w);
+  assert.ok(Math.hypot(w.regiments[0].goal.x - w.regiments[1].goal.x, w.regiments[0].goal.z - w.regiments[1].goal.z) > 16);
+  for (let i = 0; i < 2000; i++) { stepRegiments(w, 0.05); stepCombat(w, 0.05); }
   assert.ok(Math.hypot(w.regiments[0].anchor.x - w.regiments[1].anchor.x, w.regiments[0].anchor.z - w.regiments[1].anchor.z) > 16);
   command(w, new Set(troops.slice(2).map(u => u.id)), 'move', { x: 30, z: 30 });
   assert.equal(w.regiments[1].movement, 'move'); assert.equal(w.regiments[0].movement, 'follow');

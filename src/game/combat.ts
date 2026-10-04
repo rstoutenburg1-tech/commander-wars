@@ -68,6 +68,9 @@ export function stepCombat(w: World, dt: number) {
     u.attackTimer = Math.max(0, u.attackTimer - dt);
     if (u.order === 'move' && distance(u, u.goal) < 0.75) u.order = 'advance';
     const r = isTroop(u.kind) ? w.regiments.find(r => r.team === u.team && r.index === u.regiment) : undefined;
+    // Attack-moving reinforcements can engage locally while traveling. Once in
+    // place, the destination slot defines their defended area.
+    const withinLeash = (t: Unit) => !r || u.tactical || distance(u, u.goal) > COHESION.separationDistance && u.order !== 'hold' || distance(t, u.goal) <= DOCTRINE[r.engagement].leash + u.range;
     const hero = w.units.find(h => h.team === u.team && h.kind === 'hero');
     const rally = !!hero && w.players[u.team].rallyUntil > w.time && distance(hero, u) < ABILITIES.rally.radius;
     const groundMelee = u.garrison === undefined && (u.kind === 'hero' ? w.players[u.team].combatStyle === 'melee' : u.range < 3);
@@ -78,7 +81,7 @@ export function stepCombat(w: World, dt: number) {
     if (!enemy && !inSafeZone(u) && u.order !== 'move' && u.order !== 'retreat' && (u.kind === 'boss' || u.kind === 'base' || w.players[u.team].autoTracking)) {
       const aggro = u.garrison !== undefined ? u.range + GATES.rangeBonus + 1 : u.kind === 'base' ? u.range : u.kind === 'boss' ? 11 : u.order === 'hold' ? u.range + 1 : r ? DOCTRINE[r.engagement].aggro : 13;
       const priority = u.kind === 'hero' ? w.players[u.team].heroPriority : r?.priority ?? 'closest';
-      const retained = living.find(t => t.id === u.autoTarget && targetValid(t) && !(t.kind === 'gate' && w.gates.find(g => g.id === t.id)?.open) && !blockingGate(w, u, t, [u.garrison ?? -1, t.garrison ?? -1, t.kind === 'gate' ? t.id : -1]) && distance(u, t) <= aggro * 1.7 && (!r || u.tactical || distance(t, r.anchor) <= DOCTRINE[r.engagement].leash + u.range));
+      const retained = living.find(t => t.id === u.autoTarget && targetValid(t) && !(t.kind === 'gate' && w.gates.find(g => g.id === t.id)?.open) && !blockingGate(w, u, t, [u.garrison ?? -1, t.garrison ?? -1, t.kind === 'gate' ? t.id : -1]) && distance(u, t) <= aggro * 1.7 && withinLeash(t));
       enemy = retained;
       let best = Infinity;
       for (const t of living) {
@@ -87,7 +90,7 @@ export function stepCombat(w: World, dt: number) {
         // Neutral boss responds to nearby attackers; ordinary units need an explicit boss order.
         if (t.kind === 'boss' && u.kind !== 'base') continue;
         const d = distance(u, t) - STATS[t.kind].radius;
-        if (d > aggro || r && distance(t, r.anchor) > DOCTRINE[r.engagement].leash + u.range && !u.tactical) continue;
+        if (d > aggro || !withinLeash(t)) continue;
         const preferred = matchesPriority(t, priority);
         const score = d - (preferred ? 30 : 0);
         if (score < best && (!retained || preferred && !matchesPriority(retained, priority))) { enemy = t; best = score; }

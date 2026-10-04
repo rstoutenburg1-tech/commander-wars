@@ -1,14 +1,18 @@
-import { MAP, RULES, STATS, SKILLS, type Kind, type SkillId } from './config';
+import { MAP, RULES, STATS, SKILLS, isTroop, type Kind, type SkillId } from './config';
 import type { World, Unit, Point } from './types';
 import { refreshStats } from './hero';
 import { createStructures } from './structures';
 import { gatePosition } from './gates';
+import { updateRegimentGoals } from './regiment-movement';
 export function spawn(w: World, team: number, kind: Kind, pos: Point, regiment = 0): Unit {
   const s = STATS[kind];
   const unit: Unit = { ...pos, id: w.nextId++, team, kind, hp: s.hp, maxHp: s.hp, damage: s.damage, meleeDamage: s.damage,
     speed: s.speed, range: s.range, cooldown: s.cooldown, attackTimer: 0,
     order: 'hold', goal: { ...pos }, facing: 0, regiment, travel: 0, tactical: false };
-  w.units.push(unit); refreshStats(w, team); return unit;
+  w.units.push(unit); refreshStats(w, team);
+  const r = isTroop(kind) && w.regiments.find(r => r.team === team && r.index === regiment);
+  if (r) updateRegimentGoals(w, r, { newMember: unit });
+  return unit;
 }
 export function createWorld(): World {
   const w: World = { time: 0, units: [], players: [], effects: [], events: ['Develop forest + quarry, build workshop, then advance to Tier II.'], nextId: 1, winner: null, paused: false,

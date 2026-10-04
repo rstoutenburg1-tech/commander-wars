@@ -21,7 +21,7 @@ export function accessible(a: Point, b: Point) {
   return true;
 }
 export function projectWalkable(p: Point): Point {
-  if (walkable(p)) return { ...p };
+  if (walkable(p)) return { x: p.x, z: p.z };
   const candidates = [{ x: clamp(p.x, -MAP.arenaHalf + 0.4, MAP.arenaHalf - 0.4), z: clamp(p.z, -MAP.arenaHalf + 0.4, MAP.arenaHalf - 0.4) }];
   for (const b of MAP.bases) {
     candidates.push({ x: clamp(p.x, b.x - MAP.baseHalf + 0.4, b.x + MAP.baseHalf - 0.4), z: clamp(p.z, b.z - MAP.baseHalf + 0.4, b.z + MAP.baseHalf - 0.4) });
@@ -50,6 +50,7 @@ export function route(a: Point, destination: Point): Point[] {
 }
 // Reuse routes until their destination changes materially. Formation slots move every tick.
 const routes = new WeakMap<Point, { target: Point; path: Point[] }>();
+export function clearRoute(a: Point) { routes.delete(a); }
 export function moveOnMap(a: Point, destination: Point, amount: number) {
   if (distance(a, destination) < 0.05) return;
   let cached = routes.get(a);

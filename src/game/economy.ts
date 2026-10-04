@@ -52,11 +52,9 @@ export function stepEconomy(w: World, dt: number) {
       for (let i = 0; i < prod.counts[kind]; i++) {
         if (count >= RULES.armyCap || p.gold - STATS[kind].cost < prod.reserve) { skipped++; continue; }
         p.gold -= STATS[kind].cost;
-        const b = MAP.bases[p.id], r = w.regiments.find(r => r.team === p.id && r.index === prod.regiment)!;
+        const b = MAP.bases[p.id];
         const pos = { x: b.x * 0.82 + ((count + i) % 5 - 2) * 1.8, z: b.z * 0.82 + Math.floor((count + i) % 10 / 5) * 1.8 };
-        const u = spawn(w, p.id, kind, pos, prod.regiment);
-        u.order = r.movement === 'advance' ? 'advance' : r.movement;
-        u.goal = { ...r.goal }; count++; spawned++;
+        spawn(w, p.id, kind, pos, prod.regiment); count++; spawned++;
       }
     }
     prod.status = count >= RULES.armyCap ? 'Army cap · 40 troops' : skipped ? `${spawned} raised · ${skipped} skipped (reserve)` : `${spawned} raised last cycle`;

@@ -24,7 +24,7 @@ export type Engagement = 'aggressive' | 'defensive' | 'charge';
 export type Priority = 'closest' | 'hero' | 'ranged' | 'footman' | 'archer' | 'musketeer' | 'knight' | 'base';
 export interface Regiment {
   team: number; index: number; formation: Formation; movement: Order;
-  engagement: Engagement; priority: Priority; cohesion: number; facing: number; anchor: Point; goal: Point;
+  engagement: Engagement; priority: Priority; cohesion: number; facing: number; anchor: Point; goal: Point; target?: number;
 }
 export interface World {
   time: number; units: Unit[]; players: Player[]; effects: Effect[]; events: string[];

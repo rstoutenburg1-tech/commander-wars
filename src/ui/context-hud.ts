@@ -8,7 +8,7 @@ import { levelFloor, refreshStats, xpRequired } from '../game/hero';
 import { merchant, startCraft, inSafeZone } from '../game/objectives';
 import { spawn } from '../game/world';
 import { ABILITY_KEYS, learnedAbilities, syncAbilityBindings } from '../game/hotkeys';
-import { selectedRegiments, gatherArmy } from '../game/formations';
+import { selectedRegiments } from '../game/formations';
 import { atMerchant, abilityRank, buyItem, sellItem, buyConsumable, craftReason, equipItem, unequipItem, maxMana, trainHero, trainingReason, type Training } from '../game/items';
 import { heroProgressionPanel, equipmentPanel, merchantPanel, workshopPanel } from './hero-panels';
 import { gatePanel, territoriesPanel, outpostPanel, updateGatePanel, updateOutpostPanel } from './territory-panels';
@@ -34,7 +34,7 @@ export class HUD {
     else if (this.input.sidebarView === 'territories') content = territoriesPanel(w);
     else if (this.input.sidebarView === 'items') content = equipmentPanel(w.players[0]);
     else if (this.input.sidebarView === 'merchant') content = merchantPanel(w.players[0]);
-    else if (this.input.sidebarView === 'hero') content = `<h2 id="selection-name">Hero</h2><p id="selection-stats"></p><h2>Hero command</h2><button data-action="gather">F · Gather army around hero</button><div class="buttons"><button data-escort-layout="ring">Ring</button><button data-escort-layout="vanguard">Vanguard</button><button data-escort-layout="rearguard">Rear guard</button></div><label>March at army speed<input id="march-army" type="checkbox"></label><label>Hero target priority<select id="hero-priority">${Object.entries(TARGET_PRIORITIES).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label><label>Automatic engagement<input id="auto-tracking" type="checkbox"></label><p>Each escort regiment takes a separate position. Give a regiment a move/attack order to operate independently. X overrides automatic targets.</p>${heroProgressionPanel()}<h2>Abilities</h2><div id="abilities"></div>`;
+    else if (this.input.sidebarView === 'hero') content = `<h2 id="selection-name">Hero</h2><p id="selection-stats"></p><h2>Hero command</h2><div class="buttons"><button data-action="gather">F · Gather army</button><button data-action="stop-escorts">H · Stop hero & escorts</button></div><p id="escort-status"></p><div class="buttons"><button data-escort-layout="ring">Ring</button><button data-escort-layout="vanguard">Vanguard</button><button data-escort-layout="rearguard">Rear guard</button></div><label>March at army speed<input id="march-army" type="checkbox"></label><label>Hero target priority<select id="hero-priority">${Object.entries(TARGET_PRIORITIES).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label><label>Automatic engagement<input id="auto-tracking" type="checkbox"></label><p>Move the hero and escorts follow. Select 1–9 then F to attach a regiment; its own move/attack order detaches it. Shift+F gathers the whole army from any selection. X overrides automatic targets.</p>${heroProgressionPanel()}<h2>Abilities</h2><div id="abilities"></div>`;
     else if (s && w.territories[s.site].captured) content = outpostPanel(s.site);
     else if (s) {
       content = `<h2 id="selection-name"></h2><p id="selection-stats"></p>`;
@@ -46,7 +46,7 @@ export class HUD {
     } else {
       const units = w.units.filter(u => this.input.selected.has(u.id));
       content = `<h2 id="selection-name">${units.length ? 'Selected army' : 'Select a unit or building'}</h2><p id="selection-stats"></p>`;
-      if (units.length) content += `<p>WASD: move cursor · Arrows: pan · X: attack cursor · Enter: move to cursor · Space: focus</p><div class="buttons"><button data-order="advance">X · Attack cursor</button><button data-order="hold">H · Hold</button><button data-order="follow">F · Follow</button><button data-order="retreat">T · Retreat</button></div><h2>Abilities</h2><div id="abilities"></div><details><summary>Change ability hotkeys</summary><div id="ability-bindings"></div></details><button data-action="hero">Hero levels & skills</button><details><summary>Advanced regiment settings</summary><p id="regiment-status"></p><button data-action="assign">Assign selected troops to regiment</button>
+      if (units.length) content += `<p>WASD: move cursor · Arrows: pan · X: attack cursor · Enter: move to cursor · Space: focus</p><div class="buttons"><button data-order="advance">X · Attack cursor</button><button data-order="hold">H · Stop here</button><button data-order="follow">F · Join hero</button><button data-order="retreat">T · Retreat</button></div><p>Orders take effect immediately; troops form up at the destination. Shift+F gathers all regiments around the hero.</p><h2>Abilities</h2><div id="abilities"></div><details><summary>Change ability hotkeys</summary><div id="ability-bindings"></div></details><button data-action="hero">Hero levels & skills</button><details><summary>Advanced regiment settings</summary><p id="regiment-status"></p><button data-action="assign">Assign selected troops to regiment</button>
         <label>Movement <select id="movement"><option value="hold">Hold</option><option value="follow">Follow commander</option><option value="advance">Advance</option><option value="move">Move</option><option value="retreat">Retreat</option><option value="attack">Attack target</option></select></label><label>Engagement <select id="engagement"><option value="aggressive">Aggressive</option><option value="defensive">Defensive</option><option value="charge">Charge</option></select></label><label>Priority <select id="priority"><option value="closest">Nearest</option><option value="hero">Heroes</option><option value="ranged">Ranged troops</option><option value="footman">Footmen</option><option value="archer">Archers</option><option value="musketeer">Musketeers</option><option value="knight">Knights</option><option value="base">Keeps</option></select></label></details>`;
       else content += `<p>Press Tab for hero progression; K for keep upgrades. Click the barracks for troop production. Each resource site has its own extraction controls.</p>`;
       content += `<details><summary>Central objectives</summary><p id="boss-status"></p><button data-action="boss">Attack boss with selected</button><p id="merchant-status"></p><button data-trade="buy">Buy healing · 90 gold</button><button data-trade="sell-sword">Sell sword · 100 gold</button><button data-trade="sell-armor">Sell armor · 130 gold</button></details>`;
@@ -84,15 +84,18 @@ export class HUD {
     if (b.dataset.regiment !== undefined) { this.editingRegiment = Number(b.dataset.regiment); this.input.selectRegiment(this.editingRegiment); }
     if (b.dataset.formation) this.input.setFormation(b.dataset.formation as Formation);
     if (b.dataset.order === 'advance') this.input.attackAtCursor();
-    else if (b.dataset.order) command(w, new Set([...this.input.selected].filter(id => b.dataset.order !== 'follow' || w.units.find(u => u.id === id)?.kind !== 'hero')), b.dataset.order as Order);
+    else if (b.dataset.order === 'follow') this.input.escortHero();
+    else if (b.dataset.order === 'hold') this.input.holdSelection();
+    else if (b.dataset.order) this.input.orderSelection(b.dataset.order as Order);
     if (b.dataset.action === 'hero') this.input.selectHero(); if (b.dataset.action === 'army') this.input.selectArmy();
-    if (b.dataset.action === 'gather') gatherArmy(w);
+    if (b.dataset.action === 'gather') this.input.escortHero(true);
+    if (b.dataset.action === 'stop-escorts') this.input.holdHeroEscorts();
     if (b.dataset.action === 'gate') this.input.selectGate();
-    if (b.dataset.action === 'territories') { this.input.sidebarView = 'territories'; this.input.selected.clear(); this.input.activeRegiment = null; }
+    if (b.dataset.action === 'territories') { this.input.clearSelection(); this.input.sidebarView = 'territories'; }
     if (b.dataset.action === 'travel-gate') { const h = w.units.find(u => u.team === 0 && u.kind === 'hero' && u.hp > 0); if (h) command(w, new Set([h.id]), 'move', gatePosition(this.input.activeGateSite)); }
     if (b.dataset.action === 'travel-merchant') { this.input.selectHero(); command(w, this.input.selected, 'move', MAP.merchant); this.input.sidebarView = 'merchant'; }
     if (b.dataset.action === 'assign') this.input.assignRegiment(this.editingRegiment);
-    if (b.dataset.action === 'boss') { const boss = w.units.find(u => u.kind === 'boss'); if (boss) command(w, this.input.selected, 'attack', boss, boss.id); }
+    if (b.dataset.action === 'boss') { const boss = w.units.find(u => u.kind === 'boss'); if (boss) this.input.orderSelection('attack', boss, boss.id); }
     if (b.dataset.debug) this.debug(b.dataset.debug); this.update();
   }
   private changeCount(kind: TroopKind, amount: number) {
@@ -173,6 +176,8 @@ export class HUD {
         document.querySelectorAll<HTMLButtonElement>('[data-training]').forEach(b => { const kind = b.dataset.training as Training, next = p.training[kind] + 1; b.textContent = `${kind} ${p.training[kind]} / 3 · ${200 * next}g / ${30 * next}o`; b.disabled = !!trainingReason(p, kind); setText(`training-${kind}`, trainingReason(p, kind) ?? 'Train now'); });
         document.querySelectorAll<HTMLButtonElement>('[data-style]').forEach(b => b.classList.toggle('active', b.dataset.style === p.combatStyle));
         document.querySelectorAll<HTMLButtonElement>('[data-escort-layout]').forEach(b => b.classList.toggle('active', b.dataset.escortLayout === p.escortLayout));
+        const escorts = w.regiments.filter(r => r.team === 0 && r.movement === 'follow' && w.units.some(u => u.hp > 0 && u.team === 0 && u.regiment === r.index && isTroop(u.kind) && u.garrison === undefined && !u.tactical));
+        setText('escort-status', `${escorts.length} regiment${escorts.length === 1 ? '' : 's'} following · Tab, then F: gather · Tab, then H: stop`);
         this.field('hero-priority', p.heroPriority);
         for (const [id, value] of [['auto-tracking', p.autoTracking], ['march-army', p.marchWithArmy]] as const) { const field = document.querySelector<HTMLInputElement>(`#${id}`); if (field) field.checked = value; }
     }

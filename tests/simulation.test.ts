@@ -67,8 +67,9 @@ test('shield wall protection depends on frontage and cohesion', () => {
 });
 test('regiment movement follows hero while individual orders remain independent', () => {
   const w = createWorld(), hero = w.units.find(u => u.team === 0 && u.kind === 'hero')!;
-  hero.x = 0; hero.z = 0; hero.facing = 0;
-  commandRegiment(w, 0, 0, 'follow'); for (let i = 0; i < 1800; i++) stepRegiments(w, 0.05);
+  Object.assign(hero, { x: 0, z: 0, facing: 0, goal: { x: 0, z: 0 }, order: 'hold' });
+  w.units = w.units.filter(u => u.team === 0);
+  commandRegiment(w, 0, 0, 'follow'); for (let i = 0; i < 1800; i++) { stepRegiments(w, 0.05); stepCombat(w, 0.05); }
   assert.ok(Math.hypot(w.regiments[0].anchor.x, w.regiments[0].anchor.z - 9) < 0.6);
   const troop = w.units.find(u => u.team === 0 && u.kind === 'footman')!;
   command(w, new Set([troop.id]), 'move', { x: 20, z: 20 }); stepRegiments(w, 0.1);
