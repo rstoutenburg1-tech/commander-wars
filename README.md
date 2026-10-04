@@ -51,6 +51,7 @@ Each milestone is committed as a runnable state. This is a mechanics prototype, 
 | Left-click / drag | Select / box-select |
 | Shift + selection | Add to selection |
 | Right-click | Move or attack the clicked enemy |
+| Hold middle mouse button (scroll wheel) + drag | Grab and pan the map; release to stop |
 | WASD (hold) | Move targeting cursor within the battlefield view |
 | Arrow keys (hold) | Pan camera beneath the cursor |
 | Tab / F1 | Select hero |

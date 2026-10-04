@@ -18,6 +18,7 @@ export class Input {
   readonly abilityBindings: AbilityBindings = {};
   private cursor = document.createElement('div');
   private start?: { x: number; y: number };
+  private panStart?: { pointerId: number; x: number; y: number };
   private box = document.createElement('div');
   constructor(private w: World, private view: Battlefield, readonly onKey: (key: string) => void = () => {}) {
     this.box.className = 'selection-box'; document.body.append(this.box);
@@ -32,7 +33,13 @@ export class Input {
     const hero = w.units.find(u => u.team === 0 && u.kind === 'hero'); if (hero) this.selected.add(hero.id);
     view.canvas.addEventListener('contextmenu', e => e.preventDefault());
     view.canvas.addEventListener('pointerdown', e => {
+      if (this.panStart) { e.preventDefault(); return; }
       view.canvas.setPointerCapture(e.pointerId);
+      if (e.button === 1) {
+        e.preventDefault(); this.start = undefined; this.box.style.display = 'none';
+        this.panStart = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+        view.canvas.style.cursor = 'grabbing'; return;
+      }
       if (e.button === 0) this.start = { x: e.clientX, y: e.clientY };
       if (e.button === 2) {
         const point = view.ground(e.clientX, e.clientY); const id = view.pick(e.clientX, e.clientY);
@@ -42,11 +49,19 @@ export class Input {
       }
     });
     view.canvas.addEventListener('pointermove', e => {
+      if (this.panStart) {
+        if (e.pointerId !== this.panStart.pointerId) return;
+        e.preventDefault();
+        if (!(e.buttons & 4)) { this.endPan(); return; }
+        view.dragPan(this.panStart.x, this.panStart.y, e.clientX, e.clientY);
+        this.panStart.x = e.clientX; this.panStart.y = e.clientY; return;
+      }
       if (!this.start) return;
       Object.assign(this.box.style, { display: 'block', left: `${Math.min(e.clientX, this.start.x)}px`, top: `${Math.min(e.clientY, this.start.y)}px`,
         width: `${Math.abs(e.clientX - this.start.x)}px`, height: `${Math.abs(e.clientY - this.start.y)}px` });
     });
     view.canvas.addEventListener('pointerup', e => {
+      if (this.panStart) { e.preventDefault(); if (e.pointerId === this.panStart.pointerId && !(e.buttons & 4)) this.endPan(); return; }
       if (e.button !== 0 || !this.start) return;
       const start = this.start; this.start = undefined; this.box.style.display = 'none';
       if (this.attackMove) {
@@ -68,6 +83,10 @@ export class Input {
         const gate = w.gates.find(g => g.id === id && g.owner === 0); if (gate && this.selected.size === 1) { this.activeGateSite = gate.site; this.sidebarView = 'gate'; }
       }
     });
+    view.canvas.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); });
+    const cancelDrag = () => { this.endPan(); this.start = undefined; this.box.style.display = 'none'; };
+    view.canvas.addEventListener('pointercancel', cancelDrag);
+    view.canvas.addEventListener('lostpointercapture', cancelDrag);
     view.canvas.addEventListener('wheel', e => { e.preventDefault(); view.zoom = Math.max(25, Math.min(MAP.overviewZoom, view.zoom + e.deltaY * 0.08)); view.resize(); }, { passive: false });
     window.addEventListener('keydown', e => {
       if ((e.target as HTMLElement).matches('input:not([type="checkbox"]),select,textarea') || (e.target as HTMLElement).isContentEditable) {
@@ -112,7 +131,11 @@ export class Input {
       const k = e.key.toLowerCase(); view.keys.delete(k); this.cursorKeys.delete(k);
     });
     document.addEventListener('focusin', e => { if ((e.target as HTMLElement).matches('input,select,textarea')) { this.cursorKeys.clear(); view.keys.clear(); } });
-    window.addEventListener('blur', () => { this.cursorKeys.clear(); view.keys.clear(); w.paused = true; this.start = undefined; this.box.style.display = 'none'; });
+    window.addEventListener('blur', () => { this.cursorKeys.clear(); view.keys.clear(); w.paused = true; cancelDrag(); });
+  }
+  private endPan() {
+    const pan = this.panStart; this.panStart = undefined; this.view.canvas.style.cursor = '';
+    if (pan && this.view.canvas.hasPointerCapture(pan.pointerId)) this.view.canvas.releasePointerCapture(pan.pointerId);
   }
   centerCursor() { this.screenCursor.x = 0.5; this.screenCursor.y = 0.5; }
   setFormation(formation: Formation) { setSelectionFormation(this.w, this.selected, formation, this.activeRegiment); }

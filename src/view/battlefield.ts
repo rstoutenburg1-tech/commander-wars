@@ -90,6 +90,16 @@ export class Battlefield {
     this.updateCamera();
   }
   center(p: Point) { this.focus.set(p.x, 0, p.z); this.updateCamera(); }
+  dragPan(fromX: number, fromY: number, toX: number, toY: number) {
+    this.setRay(fromX, fromY);
+    const from = this.ray.ray.intersectPlane(this.plane, new THREE.Vector3());
+    this.setRay(toX, toY);
+    const to = this.ray.ray.intersectPlane(this.plane, new THREE.Vector3());
+    if (!from || !to) return;
+    this.focus.x = clamp(this.focus.x + from.x - to.x, -MAP.half, MAP.half);
+    this.focus.z = clamp(this.focus.z + from.z - to.z, -MAP.half, MAP.half);
+    this.updateCamera();
+  }
   ground(clientX: number, clientY: number): Point | null {
     this.setRay(clientX, clientY);
     const point = this.ray.ray.intersectPlane(this.plane, new THREE.Vector3());
