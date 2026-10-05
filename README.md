@@ -29,7 +29,7 @@ Lost connections automatically reconnect to the same seat and match. After 60 se
 
 For a permanent internet address, run `pnpm install --frozen-lockfile`, `pnpm build` and `pnpm start` on a Node service that supports persistent WebSockets. `PORT` and `HOST` configure the listener; the default is port 8787 on all interfaces. Serve HTTPS and proxy `/ws` to the same process. No database or account system is required for this prototype.
 
-The proposed permanent host is prepared in `render.yaml`; see [public hosting](docs/public-hosting.md) for the candidate URL, costs, source-access details and publication checks. The proposal is pending approval and has not been deployed.
+The approved free public host is prepared in `render.yaml`; see [public hosting](docs/public-hosting.md) for the target URL, free-tier limits, source-access details and publication checks. Hosting account sign-in and deployment verification are still required before the target URL is live.
 
 ## Milestones
 

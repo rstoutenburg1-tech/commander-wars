@@ -1,14 +1,14 @@
-# Public hosting proposal
+# Public hosting
 
-Proposed URL: `https://commander-wars-online.onrender.com`.
+Approved target URL: `https://commander-wars-online.onrender.com`.
 
-This address is pending user approval and Render's availability confirmation. An HTTP 404 check is not a reservation or proof of availability. If Render assigns a different hostname, obtain approval of that exact URL before sharing or completing publication. No hosting service has been created by adding these files.
+The user approved this address and free hosting on October 5, 2026. Publication still requires Render sign-in and hostname confirmation. An HTTP 404 check is not a reservation or proof of availability. If Render assigns a different hostname, obtain approval of that exact URL before sharing or completing publication. Adding these files does not create a hosting service.
 
 ## Deployment
 
-Use one Render Node web service for both the browser build and the authoritative multiplayer server. The root `render.yaml` prepares a single Starter instance in Oregon, using the locally verified Node version and locked dependency versions. Starter compute currently costs $7/month; taxes and usage beyond the workspace's included bandwidth/build allowances can add costs. A Free instance is an alternative for testing, but sleeps after 15 minutes without inbound traffic and can take about a minute to wake up.
+Use one Render Node web service for both the browser build and the authoritative multiplayer server. The root `render.yaml` selects a single **Free** instance in Oregon, using the locally verified Node version and locked dependency versions. Do not upgrade to a paid instance or purchase a domain without further approval. Free hosting sleeps after 15 minutes without inbound traffic and can take about a minute to wake up. Keep this deployment within the free workspace's bandwidth and build allowances; do not enable paid overages.
 
-After approval, connect Render to `rstoutenburg1-tech/commander-wars` with access to that repository only. The repository is currently public; changing its visibility is a separate decision, and Render can also deploy it if it is made private. Review the service name, exact assigned public hostname and price before completing deployment. Render supplies HTTPS and forwards `/ws` to the same Node process. The server already binds to Render's `PORT` on all interfaces, so no client server-address entry or separate frontend host is needed. Do not create multiple instances: lobby codes and match state currently exist in one process's memory.
+Connect Render to `rstoutenburg1-tech/commander-wars` with access to that repository only. The repository is currently public; changing its visibility is a separate decision, and Render can also deploy it if it is made private. Review the service name, exact assigned public hostname and Free instance selection before completing deployment. Render supplies HTTPS and forwards `/ws` to the same Node process. The server already binds to Render's `PORT` on all interfaces, so no client server-address entry or separate frontend host is needed. Do not create multiple instances: lobby codes and match state currently exist in one process's memory.
 
 Auto-deploys are disabled because restarting or deploying the server ends active lobbies and matches. Deploy a tested commit manually between play sessions. No database, purchased domain, tunnel or running home PC is required.
 
