@@ -3,6 +3,7 @@ import type { Player, World } from './types';
 import { afford, pay } from './economy';
 import { refreshStats } from './hero';
 import { distance } from './math';
+import { localPlayer } from './match';
 export function equipmentBonuses(p: Player): Required<ItemBonuses> {
   const b = { melee: 0, ranged: 0, hp: 0, mitigation: 0, speed: 0, range: 0, mana: 0, manaRegen: 0, hpRegen: 0 };
   for (const id of Object.values(p.equipment)) if (id && p.items[id]) for (const [key, value] of Object.entries(ITEMS[id].bonuses)) b[key as keyof ItemBonuses] += value;
@@ -29,19 +30,19 @@ export function startCraft(w: World, team: number, id: ItemId) {
   const p = w.players[team], recipe: ItemSpec = ITEMS[id]; if (craftReason(p, id) || !recipe.cost) return false;
   pay(p, recipe.cost); p.craft = { item: id, remaining: recipe.craftTime! }; return true;
 }
-export function atMerchant(w: World, team = 0) { const hero = w.units.find(u => u.team === team && u.kind === 'hero' && u.hp > 0); return !!hero && distance(hero, MAP.merchant) < MAP.merchant.radius; }
-export function buyItem(w: World, id: ItemId) {
-  const p = w.players[0], spec = ITEMS[id]; if (w.winner !== null || p.eliminated || !atMerchant(w) || p.items[id] || p.gold < spec.buy) return false;
-  p.gold -= spec.buy; w.merchantGold += spec.buy; grantItem(w, 0, id); return true;
+export function atMerchant(w: World, team = localPlayer(w)) { const hero = w.units.find(u => u.team === team && u.kind === 'hero' && u.hp > 0); return !!hero && distance(hero, MAP.merchant) < MAP.merchant.radius; }
+export function buyItem(w: World, id: ItemId, team = localPlayer(w)) {
+  const p = w.players[team], spec = ITEMS[id]; if (w.winner !== null || p.eliminated || !atMerchant(w, team) || p.items[id] || p.gold < spec.buy) return false;
+  p.gold -= spec.buy; w.merchantGold += spec.buy; grantItem(w, team, id); return true;
 }
-export function sellItem(w: World, id: ItemId) {
-  const p = w.players[0], spec = ITEMS[id]; if (!atMerchant(w) || !p.items[id] || w.merchantGold < spec.sell) return false;
-  p.items[id] = false; if (p.equipment[spec.slot] === id) unequipItem(w, 0, spec.slot);
+export function sellItem(w: World, id: ItemId, team = localPlayer(w)) {
+  const p = w.players[team], spec = ITEMS[id]; if (!atMerchant(w, team) || !p.items[id] || w.merchantGold < spec.sell) return false;
+  p.items[id] = false; if (p.equipment[spec.slot] === id) unequipItem(w, team, spec.slot);
   p.gold += spec.sell; w.merchantGold -= spec.sell; return true;
 }
-export function buyConsumable(w: World, id: 'healing' | 'mana' | keyof typeof SHOP_TOMES) {
-  const p = w.players[0], hero = w.units.find(u => u.team === 0 && u.kind === 'hero' && u.hp > 0);
-  if (!hero || !atMerchant(w) || p.eliminated || w.winner !== null) return false;
+export function buyConsumable(w: World, id: 'healing' | 'mana' | keyof typeof SHOP_TOMES, team = localPlayer(w)) {
+  const p = w.players[team], hero = w.units.find(u => u.team === team && u.kind === 'hero' && u.hp > 0);
+  if (!hero || !atMerchant(w, team) || p.eliminated || w.winner !== null) return false;
   const cost = id === 'healing' ? POTION.buy : id === 'mana' ? 120 : SHOP_TOMES[id].buy;
   if (p.gold < cost || (id === 'warcry' || id === 'standfast') && abilityRank(p, id) > 0) return false;
   p.gold -= cost; w.merchantGold += cost;
@@ -52,7 +53,7 @@ export function buyConsumable(w: World, id: 'healing' | 'mana' | keyof typeof SH
 }
 export type Training = keyof Player['training'];
 export function trainingReason(p: Player, kind: Training) { const rank = p.training[kind]; return rank >= 3 ? 'Maximum rank' : rank >= p.tier ? `Requires Keep Tier ${rank + 1}` : p.gold < 200 * (rank + 1) || p.ore < 30 * (rank + 1) ? 'Insufficient gold / ore' : null; }
-export function trainHero(w: World, kind: Training) {
-  const p = w.players[0]; if (p.eliminated || trainingReason(p, kind)) return false;
-  const next = p.training[kind] + 1; p.gold -= 200 * next; p.ore -= 30 * next; p.training[kind]++; refreshStats(w, 0); return true;
+export function trainHero(w: World, kind: Training, team = localPlayer(w)) {
+  const p = w.players[team]; if (p.eliminated || trainingReason(p, kind)) return false;
+  const next = p.training[kind] + 1; p.gold -= 200 * next; p.ore -= 30 * next; p.training[kind]++; refreshStats(w, team); return true;
 }

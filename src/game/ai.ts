@@ -9,6 +9,7 @@ import { toggleGate, buildTower, gatePosition, garrisonUnit, leaveTower } from '
 import { buildOutpost } from './outposts';
 import { startCraft } from './items';
 import { useSupport } from './support';
+import { AI_DIFFICULTIES, enemies } from './match';
 
 function composition(p: Player, visible: Unit[]) {
   const counts: Record<TroopKind, number> = p.id === 1
@@ -19,9 +20,11 @@ function composition(p: Player, visible: Unit[]) {
   const ranged = visible.filter(u => u.kind === 'archer' || u.kind === 'musketeer').length;
   const cavalry = visible.filter(u => u.kind === 'knight').length;
   const infantry = visible.filter(u => u.kind === 'footman').length;
-  if (cavalry >= 2 && unlocked(p, 'musketeer')) Object.assign(counts, { footman: 2, archer: 0, musketeer: 2, knight: 0 });
-  else if (ranged >= 3 && unlocked(p, 'knight')) Object.assign(counts, { footman: 2, archer: 1, musketeer: 0, knight: 1 });
-  else if (infantry >= 4 && infantry > ranged + cavalry) Object.assign(counts, { footman: 2, archer: 2, musketeer: 0, knight: 0 });
+  if (AI_DIFFICULTIES[p.difficulty].adapt) {
+    if (cavalry >= 2 && unlocked(p, 'musketeer')) Object.assign(counts, { footman: 2, archer: 0, musketeer: 2, knight: 0 });
+    else if (ranged >= 3 && unlocked(p, 'knight')) Object.assign(counts, { footman: 2, archer: 1, musketeer: 0, knight: 1 });
+    else if (infantry >= 4 && infantry > ranged + cavalry) Object.assign(counts, { footman: 2, archer: 2, musketeer: 0, knight: 0 });
+  }
   for (const kind of ['musketeer', 'knight'] as const) if (!unlocked(p, kind)) {
     counts.footman += counts[kind]; counts[kind] = 0;
   }
@@ -29,6 +32,7 @@ function composition(p: Player, visible: Unit[]) {
 }
 
 function nextBuilding(w: World, p: Player, wave: ReturnType<typeof cycleCost>): Building | undefined {
+  const elapsed = w.time / AI_DIFFICULTIES[p.difficulty].upgradeDelay;
   const available = (b: Building) => {
     const spec = UPGRADES[b][buildingLevel(p, b) + 1];
     return spec && spec.requiresTier <= p.tier && !p.upgrades.some(j => j.building === b);
@@ -40,10 +44,10 @@ function nextBuilding(w: World, p: Player, wave: ReturnType<typeof cycleCost>): 
   for (const [building, resource] of [['forest', 'wood'], ['quarry', 'ore']] as const) {
     if (available(building) && (wave[resource] * 3 > income[resource] * 60 * .85 || p[building] < Math.min(p.tier, 3))) return building;
   }
-  if (p.barracks < 2 && w.time > (p.id === 2 ? 60 : 180) && available('barracks')) return 'barracks';
-  if (p.barracks < 3 && p.tier >= 2 && w.time > (p.id === 3 ? 300 : 480) && available('barracks')) return 'barracks';
-  if (p.crafting < 2 && p.tier >= 2 && w.time > 360 && available('crafting')) return 'crafting';
-  if (p.tier < 4 && w.time > p.tier * 180 + p.id * 15 && p.crafting && p.barracks >= p.tier && available('base')) return 'base';
+  if (p.barracks < 2 && elapsed > (p.id === 2 ? 60 : 180) && available('barracks')) return 'barracks';
+  if (p.barracks < 3 && p.tier >= 2 && elapsed > (p.id === 3 ? 300 : 480) && available('barracks')) return 'barracks';
+  if (p.crafting < 2 && p.tier >= 2 && elapsed > 360 && available('crafting')) return 'crafting';
+  if (p.tier < 4 && elapsed > p.tier * 180 + p.id * 15 && p.crafting && p.barracks >= p.tier && available('base')) return 'base';
 }
 
 function planEconomy(w: World, p: Player, visible: Unit[]) {
@@ -66,27 +70,28 @@ function planEconomy(w: World, p: Player, visible: Unit[]) {
 
 export function stepAI(w: World, dt: number) {
   if (!w.aiEnabled) return;
-  for (const p of w.players.slice(1)) {
+  for (const p of w.players.filter(p => p.controller === 'ai')) {
     if (p.eliminated || (p.aiTimer -= dt) > 0) continue;
-    p.aiTimer = RULES.ai.thinkInterval;
+    const difficulty = AI_DIFFICULTIES[p.difficulty];
+    p.aiTimer = difficulty.thinkInterval;
     const skills = p.id === 2 ? ['cleave', 'martial', 'wind', 'rally', 'resilience', 'discipline', 'inspiration', 'ultimate'] as const : ['rally', 'wind', 'discipline', 'resilience', 'cleave', 'inspiration', 'martial', 'ultimate'] as const;
     for (const id of skills) trainSkill(w, p.id, id);
     const hero = w.units.find(u => u.team === p.id && u.kind === 'hero' && u.hp > 0);
     const army = w.units.filter(u => u.hp > 0 && u.team === p.id && (u.kind === 'hero' || isTroop(u.kind)));
     const b = MAP.bases[p.id];
-    const visible = w.units.filter(u => u.hp > 0 && u.team !== p.id && u.team < 4 && (u.kind === 'hero' || isTroop(u.kind)) && (distance(u, hero ?? b) < 35 || distance(u, b) < RULES.ai.defendRadius));
+    const visible = w.units.filter(u => u.hp > 0 && enemies(w, p.id, u.team) && u.team < 4 && (u.kind === 'hero' || isTroop(u.kind)) && (distance(u, hero ?? b) < 35 || distance(u, b) < RULES.ai.defendRadius));
     planEconomy(w, p, visible);
-    const threat = w.units.find(u => u.hp > 0 && u.team !== p.id && u.team < 4 && (u.kind === 'hero' || isTroop(u.kind)) && (distance(u, b) < RULES.ai.defendRadius || distance(u, gatePosition(p.id)) < 18));
-    const bases = w.units.filter(u => u.kind === 'base' && u.team !== p.id);
+    const threat = w.units.find(u => u.hp > 0 && enemies(w, p.id, u.team) && u.team < 4 && (u.kind === 'hero' || isTroop(u.kind)) && (distance(u, b) < RULES.ai.defendRadius || distance(u, gatePosition(p.id)) < 18));
+    const bases = w.units.filter(u => u.hp > 0 && u.kind === 'base' && enemies(w, p.id, u.team));
     bases.sort((a, c) => distance(a, hero ?? b) - distance(c, hero ?? b));
     // Stable team tie-break prevents all three AIs opening on the human.
     const target = threat ?? bases.find(base => base.team === (p.id + 1) % 4) ?? bases[0];
-    const retreat = hero && hero.hp < hero.maxHp * RULES.ai.retreatHp;
+    const retreat = hero && hero.hp < hero.maxHp * difficulty.retreatHp;
     if (hero && hero.hp < hero.maxHp * 0.7) cast(w, p.id, 'wind');
-    if (hero && visible.some(u => distance(u, hero) < 12)) { cast(w, p.id, 'rally'); cast(w, p.id, 'cleave'); }
-    if (hero && army.some(u => distance(u, hero) < 18 && u.hp < u.maxHp * .7) && !w.units.some(u => u.hp > 0 && u.team !== p.id && (u.kind === 'hero' || isTroop(u.kind) || u.kind === 'boss' || u.kind === 'base') && distance(u, hero) < 22)) useSupport(w, p.id, 'resupply');
-    if (hero && army.filter(u => u.kind === 'archer' || u.kind === 'musketeer').length >= 2 && w.units.some(u => u.hp > 0 && u.team !== p.id && (u.kind === 'base' || u.kind === 'gate' && !w.gates.find(g => g.id === u.id)?.open) && distance(u, hero) < 18)) useSupport(w, p.id, 'siege');
-    const ready = w.time >= RULES.ai.firstAttack && army.length >= RULES.ai.minAttackArmy;
+    if (hero && visible.some(u => distance(u, hero) < 12)) { cast(w, p.id, 'rally'); if (difficulty.tactics) cast(w, p.id, 'cleave'); }
+    if (difficulty.tactics && hero && army.some(u => distance(u, hero) < 18 && u.hp < u.maxHp * .7) && !w.units.some(u => u.hp > 0 && enemies(w, p.id, u.team) && (u.kind === 'hero' || isTroop(u.kind) || u.kind === 'boss' || u.kind === 'base') && distance(u, hero) < 22)) useSupport(w, p.id, 'resupply');
+    if (difficulty.tactics && hero && army.filter(u => u.kind === 'archer' || u.kind === 'musketeer').length >= 2 && w.units.some(u => u.hp > 0 && enemies(w, p.id, u.team) && (u.kind === 'base' || u.kind === 'gate' && !w.gates.find(g => g.id === u.id)?.open) && distance(u, hero) < 18)) useSupport(w, p.id, 'siege');
+    const ready = w.time >= difficulty.firstAttack && army.length >= difficulty.minAttackArmy;
     const gate = w.gates.find(g => g.site === p.id)!;
     if (gate.owner === p.id && threat && gate.open && !retreat) toggleGate(w, p.id, p.id);
     if (gate.owner === p.id && (ready && !threat || retreat) && !gate.open) toggleGate(w, p.id, p.id);
@@ -104,7 +109,7 @@ export function stepAI(w: World, dt: number) {
     // Staging stays outside the neutral boss leash; automatic tracking does not
     // attack that boss without an explicit order.
     const rallyPoint = { x: p.id === 1 ? -32 : 32, z: p.id === 3 ? 32 : -32 };
-    const goal = retreat ? { x: b.x * 0.9, z: b.z * 0.9 } : threat ? target : ready ? w.time < RULES.ai.baseAssault ? rallyPoint : target : undefined;
+    const goal = retreat ? { x: b.x * 0.9, z: b.z * 0.9 } : threat ? target : ready ? w.time < difficulty.baseAssault ? rallyPoint : target : undefined;
     p.aiState = retreat ? 'Recover' : threat ? 'Defend' : ready ? 'Attack' : 'Muster';
     if (!goal) continue;
     if (hero) { hero.order = retreat ? 'retreat' : 'advance'; hero.target = undefined; hero.goal = { x: goal.x, z: goal.z }; }

@@ -3,6 +3,7 @@ import type { World } from './types';
 import { afford, pay, unlocked, recruit } from './economy';
 import { spawn, notify } from './world';
 import { buildingPosition } from './structures';
+import { localPlayer } from './match';
 export function captureTerritory(w: World, site: number, team: number) {
   const t = w.territories[site]; t.owner = team; t.captured = true;
   t.buildings = { barracks: 0, goldmine: 0, forest: 0, quarry: 0 }; t.construction = undefined; t.spawnTimer = RULES.spawnInterval;
@@ -10,11 +11,11 @@ export function captureTerritory(w: World, site: number, team: number) {
   const g = w.gates.find(g => g.site === site); if (g) { g.owner = team; g.open = true; g.tower = false; g.towerRemaining = 0; g.garrison = []; }
   if (team === 0) notify(w, 'Enemy territory captured. Select its ruined keep or Captured bases to build an outpost.');
 }
-export function outpostReason(w: World, site: number, building: OutpostBuilding, team = 0) {
+export function outpostReason(w: World, site: number, building: OutpostBuilding, team = localPlayer(w)) {
   const t = w.territories[site];
   return !t?.captured || t.owner !== team || w.players[team].eliminated ? 'Capture this keep first' : t.buildings[building] ? 'Already built' : t.construction ? 'Construction in progress' : !afford(w.players[team], OUTPOSTS[building].cost) ? 'Insufficient resources' : null;
 }
-export function buildOutpost(w: World, site: number, building: OutpostBuilding, team = 0) {
+export function buildOutpost(w: World, site: number, building: OutpostBuilding, team = localPlayer(w)) {
   if (outpostReason(w, site, building, team)) return false;
   pay(w.players[team], OUTPOSTS[building].cost); w.territories[site].construction = { building, remaining: OUTPOSTS[building].time, total: OUTPOSTS[building].time }; return true;
 }

@@ -77,8 +77,9 @@ test('escort heading responds to hero move commands and stays stable while attac
 
 test('an explicit hero attack turns the guard toward the commanded target once', () => {
   const { w, hero, groups } = setup([4]);
+  const enemy = spawn(w, 1, 'footman', { x: -30, z: 0 });
   w.players[0].escortLayout = 'vanguard'; stepRegiments(w, .05);
-  command(w, new Set([hero.id]), 'attack', { x: -30, z: 0 }, 999);
+  command(w, new Set([hero.id]), 'attack', { x: enemy.x, z: enemy.z }, enemy.id);
   stepRegiments(w, .05);
   assert.ok(groups[0].units.every(u => u.goal.x <= -7.99));
   const before = groups[0].units.map(u => ({ ...u.goal }));

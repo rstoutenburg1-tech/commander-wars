@@ -1,6 +1,7 @@
 import { MAP, type Building } from './config';
 import type { Point, Structure, World } from './types';
 import { buildingLevel } from './economy';
+import { localPlayer } from './match';
 export const buildingNames: Record<Building, string> = { base: 'Keep', barracks: 'Barracks', crafting: 'Workshop', goldmine: 'Gold Mine', forest: 'Forest', quarry: 'Quarry' };
 export function buildingPosition(team: number, building: Building): Point {
   const b = MAP.bases[team], sx = Math.sign(b.x), sz = Math.sign(b.z);
@@ -22,5 +23,5 @@ export function structureLevel(w: World, s: Structure) {
 }
 export function selectedStructure(w: World, ids: Set<number>): Structure | undefined {
   if (ids.size !== 1) return;
-  return w.structures.find(s => ids.has(s.id) && s.team === 0 && !w.players[0].eliminated);
+  return w.structures.find(s => ids.has(s.id) && s.team === localPlayer(w) && !w.players[localPlayer(w)].eliminated);
 }

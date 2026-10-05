@@ -4,6 +4,7 @@ import type { World } from './types';
 import { notify } from './world';
 import { damageUnit } from './combat';
 import { abilityRank, maxMana } from './items';
+import { allied, enemies, localPlayer } from './match';
 export function cast(w: World, team: number, ability: keyof typeof ABILITIES) {
   const p = w.players[team], spec = ABILITIES[ability];
   const hero = w.units.find(u => u.team === team && u.kind === 'hero' && u.hp > 0);
@@ -13,21 +14,21 @@ export function cast(w: World, team: number, ability: keyof typeof ABILITIES) {
   p.mana -= spec.cost; p.cooldowns[ability] = spec.cooldown;
   if (ability === 'rally') {
     p.rallyUntil = w.time + ABILITIES.rally.duration;
-    for (const r of w.regiments) if (r.team === team && distance(r.anchor, hero) < ABILITIES.rally.radius) r.cohesion = clamp(r.cohesion + ABILITIES.rally.cohesion + (rank - 1) * 5, 0, 100);
+    for (const r of w.regiments) if (allied(w, r.team, team) && distance(r.anchor, hero) < ABILITIES.rally.radius) r.cohesion = clamp(r.cohesion + ABILITIES.rally.cohesion + (rank - 1) * 5, 0, 100);
   } else if (ability === 'wind') hero.hp = Math.min(hero.maxHp, hero.hp + hero.maxHp * (0.25 + (rank - 1) * 0.05));
   else if (ability === 'cleave') {
-    for (const u of w.units) if (u.team !== team && u.kind !== 'base' && distance(u, hero) < ABILITIES.cleave.radius) damageUnit(w, u, hero, hero.meleeDamage * (1.6 + rank * 0.4));
+    for (const u of w.units) if (enemies(w, team, u.team) && u.kind !== 'base' && distance(u, hero) < ABILITIES.cleave.radius) damageUnit(w, u, hero, hero.meleeDamage * (1.6 + rank * 0.4));
   } else if (ability === 'warcry') p.warcryUntil = w.time + ABILITIES.warcry.duration;
   else if (ability === 'standfast') p.standfastUntil = w.time + ABILITIES.standfast.duration;
   else if (ability === 'ultimate') {
     hero.hp = Math.min(hero.maxHp, hero.hp + hero.maxHp * 0.4);
-    for (const u of w.units) if (u.team === team && u.hp > 0 && isTroop(u.kind) && distance(u, hero) < ABILITIES.ultimate.radius) u.hp = Math.min(u.maxHp, u.hp + u.maxHp * 0.25);
-    for (const r of w.regiments) if (r.team === team && distance(r.anchor, hero) < ABILITIES.ultimate.radius) r.cohesion = 100;
+    for (const u of w.units) if (allied(w, u.team, team) && u.hp > 0 && isTroop(u.kind) && distance(u, hero) < ABILITIES.ultimate.radius) u.hp = Math.min(u.maxHp, u.hp + u.maxHp * 0.25);
+    for (const r of w.regiments) if (allied(w, r.team, team) && distance(r.anchor, hero) < ABILITIES.ultimate.radius) r.cohesion = 100;
   }
   const colors = { rally: '#ffdf65', wind: '#65efa1', cleave: '#ffbc65', warcry: '#fb7759', standfast: '#72cdff', ultimate: '#cc9eff' };
   const duration = ability === 'cleave' ? 0.9 : 1.3;
   const radius = ability === 'wind' ? 3 : ABILITIES[ability].radius;
   w.effects.push({ x: hero.x, z: hero.z, life: duration, duration, radius, color: colors[ability], kind: ability, source: hero.id, height: hero.garrison !== undefined ? 6.5 : 0 });
-  if (team === 0) notify(w, `${spec.name} activated · ${Math.floor(p.mana)} / ${maxMana(p)} mana.`);
+  if (team === localPlayer(w)) notify(w, `${spec.name} activated · ${Math.floor(p.mana)} / ${maxMana(p)} mana.`);
   return true;
 }

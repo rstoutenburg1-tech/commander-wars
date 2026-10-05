@@ -8,6 +8,14 @@ import { walkable, projectWalkable } from './navigation';
 import { abilityRank, equipmentBonuses } from './items';
 import { blockingGate, moveWithGates, leaveTower } from './gates';
 import { captureTerritory } from './outposts';
+import { allied, enemies, localPlayer, updateVictory } from './match';
+import type { Player } from './types';
+
+function activeAura(w: World, unit: Unit, ability: 'rally' | 'warcry' | 'standfast'): Player | undefined {
+  const timer = ability === 'rally' ? 'rallyUntil' : ability === 'warcry' ? 'warcryUntil' : 'standfastUntil';
+  return w.players.filter(p => allied(w, p.id, unit.team) && p[timer] > w.time && w.units.some(hero => hero.hp > 0 && hero.kind === 'hero' && hero.team === p.id && distance(hero, unit) < ABILITIES[ability].radius))
+    .sort((a, b) => abilityRank(b, ability) - abilityRank(a, ability))[0];
+}
 export const matchesPriority = (u: Unit, priority: Priority) => priority === 'ranged' ? u.kind === 'archer' || u.kind === 'musketeer' : u.kind === priority;
 export function ordinaryAttackModifier(w: World, attacker: Unit, victim: Unit, meleeAttack = false) {
   if (victim.kind === 'base' || victim.kind === 'gate') {
@@ -32,7 +40,7 @@ export function clampBoss(boss: Unit) {
   if (d > radius) { boss.x = MAP.boss.x + (boss.x - MAP.boss.x) / d * radius; boss.z = MAP.boss.z + (boss.z - MAP.boss.z) / d * radius; }
 }
 export function damageUnit(w: World, victim: Unit, attacker: Unit, amount: number) {
-  if (victim.hp <= 0 || inSafeZone(victim) || inSafeZone(attacker) || w.invulnerable && victim.team === 0) return;
+  if (victim.hp <= 0 || !enemies(w, attacker.team, victim.team) || inSafeZone(victim) || inSafeZone(attacker) || w.invulnerable && victim.team === localPlayer(w)) return;
   if (blockingGate(w, attacker, victim, [attacker.garrison ?? -1, victim.garrison ?? -1, victim.kind === 'gate' ? victim.id : -1])) return;
   const r = w.regiments.find(r => r.team === victim.team && r.index === victim.regiment);
   const frontal = r && Math.cos(Math.atan2(attacker.x - victim.x, attacker.z - victim.z) - r.facing) > 0.45;
@@ -42,13 +50,14 @@ export function damageUnit(w: World, victim: Unit, attacker: Unit, amount: numbe
   }
   if (victim.kind === 'hero') amount *= 1 - equipmentBonuses(w.players[victim.team]).mitigation;
   if (victim.garrison !== undefined) amount *= 1 - GATES.mitigation;
-  const defender = w.players[victim.team], commander = w.units.find(u => u.team === victim.team && u.kind === 'hero' && u.hp > 0);
-  if (defender && commander && defender.standfastUntil > w.time && distance(victim, commander) < ABILITIES.standfast.radius) amount *= 1 - (0.2 + abilityRank(defender, 'standfast') * 0.05);
+  const standfast = activeAura(w, victim, 'standfast');
+  if (standfast) amount *= 1 - (0.2 + abilityRank(standfast, 'standfast') * 0.05);
   victim.hp -= amount;
   if (victim.kind === 'boss' && w.players[attacker.team]) w.players[attacker.team].xp += Math.min(amount, victim.hp + amount) * 0.025;
   if (victim.hp <= 0) kill(w, victim, attacker);
 }
 export function kill(w: World, victim: Unit, attacker: Unit) {
+  if (!enemies(w, attacker.team, victim.team)) return;
   victim.hp = 0;
   leaveTower(w, victim);
   const p = w.players[attacker.team];
@@ -74,9 +83,7 @@ export function kill(w: World, victim: Unit, attacker: Unit) {
     for (const u of w.units) if (u.team === victim.team) u.hp = 0;
     notify(w, `${TEAMS[victim.team].name} base destroyed.`);
     if (p) captureTerritory(w, victim.team, p.id);
-    const survivors = w.players.filter(p => !p.eliminated);
-    if (survivors.length === 1) w.winner = survivors[0].id;
-    if (victim.team === 0) w.winner = survivors[0]?.id ?? -1;
+    updateVictory(w);
   }
 }
 export function stepCombat(w: World, dt: number) {
@@ -90,9 +97,9 @@ export function stepCombat(w: World, dt: number) {
     // place, the destination slot defines their defended area.
     const withinLeash = (t: Unit) => !r || u.tactical || distance(u, u.goal) > COHESION.separationDistance && u.order !== 'hold' || distance(t, u.goal) <= DOCTRINE[r.engagement].leash + u.range;
     const hero = w.units.find(h => h.team === u.team && h.kind === 'hero');
-    const rally = !!hero && w.players[u.team].rallyUntil > w.time && distance(hero, u) < ABILITIES.rally.radius;
+    const rally = activeAura(w, u, 'rally');
     const groundMelee = u.garrison === undefined && (u.kind === 'hero' ? w.players[u.team].combatStyle === 'melee' : u.range < 3);
-    const targetValid = (t: Unit) => t.hp > 0 && t.team !== u.team && !inSafeZone(t) && !(groundMelee && t.garrison !== undefined) && (u.kind !== 'boss' || t.kind !== 'base' && t.kind !== 'gate' && distance(t, MAP.boss) <= MAP.boss.radius);
+    const targetValid = (t: Unit) => t.hp > 0 && enemies(w, u.team, t.team) && !inSafeZone(t) && !(groundMelee && t.garrison !== undefined) && (u.kind !== 'boss' || t.kind !== 'base' && t.kind !== 'gate' && distance(t, MAP.boss) <= MAP.boss.radius);
     if (u.kind === 'boss') { clampBoss(u); if (u.target && !living.some(t => t.id === u.target && targetValid(t))) u.target = undefined; }
     const explicit = !inSafeZone(u) ? living.find(t => t.id === u.target && targetValid(t)) : undefined;
     let enemy = explicit;
@@ -116,18 +123,18 @@ export function stepCombat(w: World, dt: number) {
       u.autoTarget = enemy?.id;
     }
     const barrier = blockingGate(w, u, enemy ?? u.goal, [u.garrison ?? -1, enemy?.garrison ?? -1, enemy?.kind === 'gate' ? enemy.id : -1]);
-    if (barrier && enemy) enemy = barrier.team !== u.team ? barrier : undefined;
-    else if (barrier && barrier.team !== u.team && u.order !== 'move' && u.order !== 'retreat' && u.order !== 'hold' && w.players[u.team]?.autoTracking) { enemy = barrier; u.autoTarget = barrier.id; }
+    if (barrier && enemy) enemy = enemies(w, u.team, barrier.team) ? barrier : undefined;
+    else if (barrier && enemies(w, u.team, barrier.team) && u.order !== 'move' && u.order !== 'retreat' && u.order !== 'hold' && w.players[u.team]?.autoTracking) { enemy = barrier; u.autoTarget = barrier.id; }
     const d = enemy ? distance(u, enemy) - STATS[enemy.kind].radius : Infinity;
     const melee = u.kind === 'hero' && u.garrison === undefined && w.players[u.team].combatStyle === 'melee', attackRange = melee ? 2.5 : u.range + (u.garrison !== undefined ? GATES.rangeBonus : 0);
     if (enemy && d <= attackRange) {
       u.facing = Math.atan2(enemy.x - u.x, enemy.z - u.z);
       if (u.attackTimer === 0) {
         const charge = u.kind === 'knight' && r?.engagement === 'charge' && u.travel > 8 && !bracedAgainst(w, enemy, u);
-        const warcry = hero && w.players[u.team].warcryUntil > w.time && distance(hero, u) < ABILITIES.warcry.radius;
+        const warcry = activeAura(w, u, 'warcry');
         const aura = hero && isTroop(u.kind) && distance(u, hero) < 18 ? 1 + w.players[u.team].training.command * 0.05 : 1;
         const meleeAttack = u.kind === 'boss' || u.kind === 'footman' || u.kind === 'knight' || u.kind === 'hero' && u.garrison === undefined && (melee || d < 2.5);
-        const damage = (u.kind === 'hero' && u.garrison === undefined && (melee || d < 2.5) ? u.meleeDamage : u.damage) * ordinaryAttackModifier(w, u, enemy, meleeAttack) * (charge ? r?.formation === 'wedge' ? 2.4 : 1.8 : 1) * (warcry ? 1.2 + abilityRank(w.players[u.team], 'warcry') * 0.1 : 1) * aura * (u.garrison !== undefined ? GATES.damageBonus : 1);
+        const damage = (u.kind === 'hero' && u.garrison === undefined && (melee || d < 2.5) ? u.meleeDamage : u.damage) * ordinaryAttackModifier(w, u, enemy, meleeAttack) * (charge ? r?.formation === 'wedge' ? 2.4 : 1.8 : 1) * (warcry ? 1.2 + abilityRank(warcry, 'warcry') * 0.1 : 1) * aura * (u.garrison !== undefined ? GATES.damageBonus : 1);
         damageUnit(w, enemy, u, damage);
         if (charge) {
           const defender = w.regiments.find(r => r.team === enemy!.team && r.index === enemy!.regiment);
@@ -135,7 +142,7 @@ export function stepCombat(w: World, dt: number) {
           w.effects.push({ x: enemy.x, z: enemy.z, radius: 3, life: 0.5, duration: 0.5, color: '#ffd676', kind: 'charge', source: u.id, target: enemy.id });
         }
         u.travel = 0;
-        u.attackTimer = u.cooldown / (rally ? ABILITIES.rally.attackSpeed + (w.players[u.team].skills.rally - 1) * 0.08 : 1);
+        u.attackTimer = u.cooldown / (rally ? ABILITIES.rally.attackSpeed + (abilityRank(rally, 'rally') - 1) * 0.08 : 1);
         const kind = meleeAttack ? 'melee' : u.kind === 'musketeer' ? 'shot' : 'arrow';
         const duration = kind === 'arrow' ? 0.5 : 0.3;
         w.effects.push({ x: u.x, z: u.z, to: { x: enemy.x, z: enemy.z }, color: TEAMS[u.team]?.color ?? '#ffc872', life: duration, duration, radius: 0.3, kind, source: u.id, target: enemy.id,

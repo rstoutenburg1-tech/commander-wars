@@ -1,4 +1,5 @@
 import type { Kind, Building, TroopKind, SkillId, Ability, ItemId, ItemSlot, OutpostBuilding } from './config';
+import type { MatchController, AIDifficulty, MatchSettings } from './match';
 export interface Point { x: number; z: number }
 export type Order = 'move' | 'advance' | 'hold' | 'attack' | 'follow' | 'retreat';
 export interface Unit extends Point {
@@ -12,6 +13,7 @@ export interface Effect extends Point {
   source?: number; target?: number; height?: number; toHeight?: number;
 }
 export interface Player {
+  controller: MatchController; alliance: number; difficulty: AIDifficulty; name: string;
   id: number; gold: number; wood: number; ore: number; level: number; xp: number; respawn: number; eliminated: boolean;
   tier: number; barracks: number; crafting: number; goldmine: number; forest: number; quarry: number;
   upgrades: { building: Building; to: number; remaining: number; total: number }[];
@@ -32,6 +34,7 @@ export interface Regiment {
   engagement: Engagement; priority: Priority; cohesion: number; facing: number; anchor: Point; goal: Point; target?: number;
 }
 export interface World {
+  localPlayer?: number; networked?: boolean; settings?: MatchSettings;
   time: number; units: Unit[]; players: Player[]; effects: Effect[]; events: string[];
   nextId: number; winner: number | null; paused: boolean; regiments: Regiment[];
   aiEnabled: boolean; invulnerable: boolean; bossTimer: number; merchantGold: number;

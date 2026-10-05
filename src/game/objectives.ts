@@ -5,11 +5,12 @@ export { startCraft } from './items';
 import { damageUnit } from './combat';
 import { notify } from './world';
 import type { Unit, World } from './types';
+import { localPlayer } from './match';
 export const inSafeZone = (u: Unit) => distance(u, MAP.merchant) < MAP.merchant.radius;
-export function merchant(w: World, action: 'buy' | 'sell-sword' | 'sell-armor') {
-  const p = w.players[0], hero = w.units.find(u => u.team === 0 && u.kind === 'hero');
+export function merchant(w: World, action: 'buy' | 'sell-sword' | 'sell-armor', team = localPlayer(w)) {
+  const hero = w.units.find(u => u.team === team && u.kind === 'hero');
   if (!hero || !inSafeZone(hero)) { notify(w, 'Move your commander into the merchant safe zone.'); return false; }
-  return action === 'buy' ? buyConsumable(w, 'healing') : sellItem(w, action === 'sell-sword' ? 'sword' : 'armor');
+  return action === 'buy' ? buyConsumable(w, 'healing', team) : sellItem(w, action === 'sell-sword' ? 'sword' : 'armor', team);
 }
 export function stepObjectives(w: World, dt: number) {
   w.merchantGold += dt;
@@ -18,7 +19,7 @@ export function stepObjectives(w: World, dt: number) {
     p.craft.remaining -= dt;
     if (p.craft.remaining <= 0) {
       grantItem(w, p.id, p.craft.item);
-      if (p.id === 0) notify(w, `${ITEMS[p.craft.item].name} crafted. Manage equipment in Items.`);
+      if (p.id === localPlayer(w)) notify(w, `${ITEMS[p.craft.item].name} crafted. Manage equipment in Items.`);
       p.craft = undefined;
     }
   }

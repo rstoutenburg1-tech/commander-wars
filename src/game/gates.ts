@@ -1,6 +1,7 @@
 import { MAP, GATES } from './config';
 import type { Gate, Point, Unit, World } from './types';
 import { distance } from './math';
+import { localPlayer } from './match';
 import { moveOnMap, projectWalkable } from './navigation';
 import { afford, pay } from './economy';
 import { notify, spawn } from './world';
@@ -27,21 +28,21 @@ export function moveWithGates(w: World, a: Point, destination: Point, amount: nu
   const before = { ...a }; moveOnMap(a, destination, amount);
   if (blockingGate(w, before, a)) { a.x = before.x; a.z = before.z; }
 }
-export function toggleGate(w: World, site: number, team = 0) {
+export function toggleGate(w: World, site: number, team = localPlayer(w)) {
   const g = w.gates.find(g => g.site === site), p = w.players[team];
   if (!g || g.owner !== team || p.eliminated || !w.units.some(u => u.id === g.id && u.hp > 0) || p.gold < GATES.toggleGold) return false;
   p.gold -= GATES.toggleGold; g.open = !g.open;
   if (team === 0) notify(w, `Gate ${g.open ? 'opened' : 'closed'} · ${GATES.toggleGold} gold.`); return true;
 }
-export function towerReason(w: World, site: number, team = 0) {
+export function towerReason(w: World, site: number, team = localPlayer(w)) {
   const g = w.gates.find(g => g.site === site);
   return !g || g.owner !== team || w.players[team].eliminated ? 'Not your gate' : !w.units.some(u => u.id === g.id && u.hp > 0) ? 'Rebuild the gate first' : g.tower ? 'Tower already built' : g.towerRemaining > 0 ? 'Tower under construction' : !afford(w.players[team], GATES.tower) ? 'Need 900 gold / 150 wood / 120 ore' : null;
 }
-export function buildTower(w: World, site: number, team = 0) {
+export function buildTower(w: World, site: number, team = localPlayer(w)) {
   if (towerReason(w, site, team)) return false;
   pay(w.players[team], GATES.tower); w.gates.find(g => g.site === site)!.towerRemaining = GATES.towerTime; return true;
 }
-export function repairGate(w: World, site: number, team = 0) {
+export function repairGate(w: World, site: number, team = localPlayer(w)) {
   const g = w.gates.find(g => g.site === site);
   if (!g || g.owner !== team || w.players[team].eliminated || w.units.some(u => u.id === g.id && u.hp > 0) || !afford(w.players[team], GATES.repair)) return false;
   pay(w.players[team], GATES.repair);
@@ -56,7 +57,7 @@ export function leaveTower(w: World, u: Unit) {
   if (g && u.hp > 0) { const center = gatePosition(g.site), base = MAP.bases[g.site], length = Math.hypot(base.x, base.z); Object.assign(u, projectWalkable({ x: center.x + base.x / length * 3, z: center.z + base.z / length * 3 })); }
   u.garrison = undefined; u.order = 'hold'; u.goal = { x: u.x, z: u.z }; u.target = undefined; u.autoTarget = undefined; u.tactical = true;
 }
-export function garrisonUnit(w: World, site: number, id: number, team = 0) {
+export function garrisonUnit(w: World, site: number, id: number, team = localPlayer(w)) {
   const g = w.gates.find(g => g.site === site), u = w.units.find(u => u.id === id && u.hp > 0);
   const gate = g && w.units.find(u => u.id === g.id && u.hp > 0);
   if (!g || !gate || g.owner !== team || !g.tower || !u || u.team !== team || !canGarrison(u) || u.garrison !== undefined || g.garrison.length >= GATES.capacity || distance(u, gate) > 14) return false;
