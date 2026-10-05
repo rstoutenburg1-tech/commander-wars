@@ -5,7 +5,7 @@ Final artwork: `commander-wars-cover.png`.
 
 ## Final prompt
 
-+Use case: stylized-concept.
+Use case: stylized-concept.
 Asset type: finished landscape game cover / key art, approximately 16:9.
 Create an original polished cover illustration for the fantasy strategy game Commander Wars, based on its actual game elements.
 Scene: a spacious four-corner battlefield of rolling green grass, stone paths, separated fortified villages with stone keeps, wooden gates and small archer towers. A circular stone boss arena occupies the distant central battlefield; an enormous stone golem with glowing eyes stands inside it. A small merchant stall with a colorful canvas canopy sits beside a sheltered approach, a secondary environmental detail.
