@@ -1,9 +1,8 @@
 import type { World, Unit, Formation, Order, Point } from '../game/types';
 import { ABILITIES, MAP, RULES, isTroop, type Ability, type Building } from '../game/config';
-import { command, commandRegiment } from '../game/commands';
+import { applyAction, type GameAction } from '../game/actions';
+import { localPlayer, enemies } from '../game/match';
 import { ABILITY_KEYS, advanceCursor, bindAbility, learnedAbilities, syncAbilityBindings, type AbilityBindings } from '../game/hotkeys';
-import { setSelectionFormation, gatherArmy } from '../game/formations';
-import { cast } from '../game/abilities';
 import { inSafeZone } from '../game/objectives';
 import type { Battlefield } from './battlefield';
 export class Input {
@@ -22,7 +21,10 @@ export class Input {
   private start?: { x: number; y: number };
   private panStart?: { pointerId: number; x: number; y: number };
   private box = document.createElement('div');
-  constructor(private w: World, private view: Battlefield, readonly onKey: (key: string) => void = () => {}) {
+  private get team() { return localPlayer(this.w); }
+  dispatch(action: GameAction) { return this.sender ? !!this.sender(action) : applyAction(this.w, this.team, action); }
+  constructor(private w: World, private view: Battlefield, readonly onKey: (key: string) => void = () => {}, private sender?: (action: GameAction) => unknown) {
+    this.activeGateSite = this.team;
     this.box.className = 'selection-box'; document.body.append(this.box);
     this.cursor.className = 'keyboard-cursor'; this.cursor.innerHTML = '<span class="crosshair"></span><small></small>';
     view.canvas.parentElement!.append(this.cursor);
@@ -32,7 +34,7 @@ export class Input {
       const seen = new Set<string>();
       for (const ability of Object.keys(this.abilityBindings) as Ability[]) { const key = this.abilityBindings[ability]; if (key && seen.has(key)) delete this.abilityBindings[ability]; else if (key) seen.add(key); }
     } catch { /* Preferences are optional when storage is unavailable. */ }
-    const hero = w.units.find(u => u.team === 0 && u.kind === 'hero'); if (hero) this.selected.add(hero.id);
+    const hero = w.units.find(u => u.team === this.team && u.kind === 'hero'); if (hero) this.selected.add(hero.id);
     view.canvas.addEventListener('contextmenu', e => e.preventDefault());
     view.canvas.addEventListener('pointerdown', e => {
       if (this.panStart) { e.preventDefault(); return; }
@@ -45,7 +47,7 @@ export class Input {
       if (e.button === 0) this.start = { x: e.clientX, y: e.clientY };
       if (e.button === 2) {
         const point = view.ground(e.clientX, e.clientY); const id = view.pick(e.clientX, e.clientY);
-        const enemy = w.units.find(u => u.id === id && u.team !== 0);
+        const enemy = w.units.find(u => u.id === id && enemies(w, this.team, u.team));
         if (point) this.orderSelection(enemy ? 'attack' : 'move', point, enemy?.id);
         this.attackMove = false;
       }
@@ -75,15 +77,15 @@ export class Input {
       if (!e.shiftKey) this.selected.clear();
       if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6) {
         for (const u of w.units) {
-          if (u.team !== 0 || !isTroop(u.kind) && u.kind !== 'hero') continue;
+          if (u.team !== this.team || !isTroop(u.kind) && u.kind !== 'hero') continue;
           const p = view.screen(u);
           if (p.x >= Math.min(start.x, e.clientX) && p.x <= Math.max(start.x, e.clientX) && p.y >= Math.min(start.y, e.clientY) && p.y <= Math.max(start.y, e.clientY)) this.selected.add(u.id);
         }
       } else {
         const id = view.pick(e.clientX, e.clientY);
-        if (id !== undefined && (w.units.find(u => u.id === id)?.team === 0 || w.structures.find(s => s.id === id)?.team === 0)) this.selected.add(id);
+        if (id !== undefined && (w.units.find(u => u.id === id)?.team === this.team || w.structures.find(s => s.id === id)?.team === this.team)) this.selected.add(id);
         if (this.selected.size === 1 && w.units.find(u => u.id === id)?.kind === 'hero') this.sidebarView = 'hero';
-        const gate = w.gates.find(g => g.id === id && g.owner === 0); if (gate && this.selected.size === 1) { this.activeGateSite = gate.site; this.sidebarView = 'gate'; }
+        const gate = w.gates.find(g => g.id === id && g.owner === this.team); if (gate && this.selected.size === 1) { this.activeGateSite = gate.site; this.sidebarView = 'gate'; }
       }
     });
     view.canvas.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); });
@@ -120,17 +122,17 @@ export class Input {
       if (k === 'home') { view.zoom = MAP.overviewZoom; view.center({ x: 0, z: 0 }); view.resize(); this.centerCursor(); }
       if (k === 'end') this.centerCursor();
       if (['+', '=', '-'].includes(k)) { view.zoom = Math.max(25, Math.min(MAP.overviewZoom, view.zoom * (k === '-' ? 1.2 : 1 / 1.2))); view.resize(); }
-      if (k === 'p' && w.winner === null) w.paused = !w.paused;
+      if (k === 'p' && !w.networked && w.winner === null) this.dispatch({ type: 'pause' });
       if (k === 'escape') { this.attackMove = false; this.selected.clear(); this.clearRegimentSelection(); this.activeRegiment = null; this.sidebarView = 'selection'; }
-      syncAbilityBindings(w.players[0], this.abilityBindings);
-      const ability = learnedAbilities(w.players[0]).find(a => this.abilityBindings[a] === k); if (ability) cast(w, 0, ability);
+      syncAbilityBindings(w.players[this.team], this.abilityBindings);
+      const ability = learnedAbilities(w.players[this.team]).find(a => this.abilityBindings[a] === k); if (ability) this.dispatch({ type: 'ability', ability });
       this.onKey(k);
     });
     window.addEventListener('keyup', e => {
       const k = e.key.toLowerCase(); view.keys.delete(k); this.cursorKeys.delete(k);
     });
     document.addEventListener('focusin', e => { if ((e.target as HTMLElement).matches('input,select,textarea')) { this.cursorKeys.clear(); view.keys.clear(); } });
-    window.addEventListener('blur', () => { this.cursorKeys.clear(); view.keys.clear(); w.paused = true; cancelDrag(); });
+    window.addEventListener('blur', () => { this.cursorKeys.clear(); view.keys.clear(); if (!w.networked) w.paused = true; cancelDrag(); });
   }
   private endPan() {
     const pan = this.panStart; this.panStart = undefined; this.view.canvas.style.cursor = '';
@@ -140,40 +142,36 @@ export class Input {
   clearSelection() { this.selected.clear(); this.clearRegimentSelection(); this.activeRegiment = null; }
   private clearRegimentSelection() { this.selectedRegimentIndices.clear(); this.wholeArmy = false; }
   private refreshTroopSelection() {
-    for (const u of this.w.units) if (u.hp > 0 && u.team === 0 && isTroop(u.kind) && u.garrison === undefined && (this.wholeArmy || this.selectedRegimentIndices.has(u.regiment))) this.selected.add(u.id);
+    for (const u of this.w.units) if (u.hp > 0 && u.team === this.team && isTroop(u.kind) && u.garrison === undefined && (this.wholeArmy || this.selectedRegimentIndices.has(u.regiment))) this.selected.add(u.id);
   }
   orderSelection(order: Order, point?: Point, target?: number) {
     this.refreshTroopSelection();
-    const groups = this.wholeArmy ? this.w.regiments.filter(r => r.team === 0).map(r => r.index) : [...this.selectedRegimentIndices];
-    command(this.w, this.selected, order, point, target, groups);
+    const groups = this.wholeArmy ? this.w.regiments.filter(r => r.team === this.team).map(r => r.index) : [...this.selectedRegimentIndices];
+    this.dispatch({ type: 'order', ids: [...this.selected], order, point: point ? { x: point.x, z: point.z } : undefined, target, regiments: groups });
   }
   escortHero(all = false) {
-    if (!this.w.units.some(u => u.team === 0 && u.kind === 'hero' && u.hp > 0)) return;
+    if (!this.w.units.some(u => u.team === this.team && u.kind === 'hero' && u.hp > 0)) return;
     this.refreshTroopSelection();
-    const troops = this.w.units.filter(u => this.selected.has(u.id) && u.team === 0 && isTroop(u.kind) && u.garrison === undefined);
-    const heroSelected = this.w.units.some(u => this.selected.has(u.id) && u.team === 0 && u.kind === 'hero');
-    if (all || this.wholeArmy || heroSelected && !troops.length) { gatherArmy(this.w); return; }
+    const troops = this.w.units.filter(u => this.selected.has(u.id) && u.team === this.team && isTroop(u.kind) && u.garrison === undefined);
+    const heroSelected = this.w.units.some(u => this.selected.has(u.id) && u.team === this.team && u.kind === 'hero');
+    if (all || this.wholeArmy || heroSelected && !troops.length) { this.dispatch({ type: 'escort', ids: [...this.selected], all: true }); return; }
     const indices = new Set([...this.selectedRegimentIndices, ...troops.map(u => u.regiment)]);
-    for (const index of indices) commandRegiment(this.w, 0, index, 'follow');
+    this.dispatch({ type: 'escort', ids: [...this.selected], regiments: [...indices] });
   }
-  holdHeroEscorts() {
-    const hero = this.w.units.find(u => u.team === 0 && u.kind === 'hero' && u.hp > 0);
-    if (hero) command(this.w, new Set([hero.id]), 'hold');
-    for (const r of this.w.regiments.filter(r => r.team === 0 && r.movement === 'follow')) commandRegiment(this.w, 0, r.index, 'hold');
-  }
+  holdHeroEscorts() { this.dispatch({ type: 'stopEscorts' }); }
   holdSelection() {
-    const heroSelected = this.w.units.some(u => this.selected.has(u.id) && u.team === 0 && u.kind === 'hero');
+    const heroSelected = this.w.units.some(u => this.selected.has(u.id) && u.team === this.team && u.kind === 'hero');
     this.orderSelection('hold');
     if (heroSelected) this.holdHeroEscorts();
   }
   setFormation(formation: Formation) {
-    this.refreshTroopSelection(); setSelectionFormation(this.w, this.selected, formation, this.activeRegiment);
-    for (const index of this.selectedRegimentIndices) setSelectionFormation(this.w, new Set(), formation, index);
+    this.refreshTroopSelection();
+    this.dispatch({ type: 'formation', ids: [...this.selected], formation, regiments: [...new Set([...this.selectedRegimentIndices, ...(this.activeRegiment === null ? [] : [this.activeRegiment])])] });
   }
   private cursorPosition() { const r = this.view.canvas.getBoundingClientRect(); return { x: r.left + r.width * this.screenCursor.x, y: r.top + r.height * this.screenCursor.y }; }
   private findCursorTarget(): Unit | undefined {
     const p = this.cursorPosition(), r = this.view.canvas.getBoundingClientRect();
-    const valid = (u: Unit) => u.team !== 0 && u.hp > 0 && !inSafeZone(u);
+    const valid = (u: Unit) => enemies(this.w, this.team, u.team) && u.hp > 0 && !inSafeZone(u);
     const hitId = this.view.pick(p.x, p.y), hit = this.w.units.find(u => u.id === hitId && valid(u)); if (hit) return hit;
     let nearest: Unit | undefined, best = 34;
     for (const u of this.w.units) {
@@ -206,33 +204,24 @@ export class Input {
   focusSelection() {
     const units = this.w.units.filter(u => this.selected.has(u.id) && u.hp > 0);
     const site = this.w.structures.find(s => this.selected.has(s.id));
-    const point = units.length ? { x: units.reduce((sum, u) => sum + u.x, 0) / units.length, z: units.reduce((sum, u) => sum + u.z, 0) / units.length } : site ?? this.w.units.find(u => u.team === 0 && u.kind === 'hero');
+    const point = units.length ? { x: units.reduce((sum, u) => sum + u.x, 0) / units.length, z: units.reduce((sum, u) => sum + u.z, 0) / units.length } : site ?? this.w.units.find(u => u.team === this.team && u.kind === 'hero');
     if (point) { this.view.zoom = 45; this.view.center(point); this.view.resize(); this.centerCursor(); }
   }
   assignAbility(ability: Ability, key: string) {
-    if (!bindAbility(this.w.players[0], this.abilityBindings, ability, key)) return;
+    if (!bindAbility(this.w.players[this.team], this.abilityBindings, ability, key)) return;
     try { localStorage.setItem('commander-wars-ability-keys', JSON.stringify(this.abilityBindings)); } catch { /* Session bindings still work. */ }
   }
-  selectHero() { this.clearRegimentSelection(); this.sidebarView = 'hero'; this.activeRegiment = null; this.selected.clear(); const u = this.w.units.find(u => u.team === 0 && u.kind === 'hero' && u.hp > 0); if (u) this.selected.add(u.id); }
-  selectBuilding(building: Building) { this.clearRegimentSelection(); this.sidebarView = 'selection'; this.activeRegiment = null; const s = this.w.structures.find(s => s.team === 0 && s.site === 0 && s.building === building); this.selected.clear(); if (s && !this.w.players[0].eliminated) this.selected.add(s.id); }
-  selectGate(site = 0) { const g = this.w.gates.find(g => g.site === site && g.owner === 0); if (!g) return; this.clearRegimentSelection(); this.sidebarView = 'gate'; this.activeGateSite = site; this.activeRegiment = null; this.selected.clear(); if (this.w.units.some(u => u.id === g.id && u.hp > 0)) this.selected.add(g.id); this.view.zoom = 45; this.view.center({ x: MAP.bases[site].x * 0.64, z: MAP.bases[site].z * 0.64 }); this.view.resize(); this.centerCursor(); }
-  selectTerritory(site: number) { const t = this.w.territories[site], s = this.w.structures.find(s => s.site === site && s.building === 'base'); if (!t?.captured || t.owner !== 0 || !s) return; this.clearRegimentSelection(); this.sidebarView = 'selection'; this.activeRegiment = null; this.selected.clear(); this.selected.add(s.id); this.view.zoom = 65; this.view.center(s); this.view.resize(); this.centerCursor(); }
+  selectHero() { this.clearRegimentSelection(); this.sidebarView = 'hero'; this.activeRegiment = null; this.selected.clear(); const u = this.w.units.find(u => u.team === this.team && u.kind === 'hero' && u.hp > 0); if (u) this.selected.add(u.id); }
+  selectBuilding(building: Building) { this.clearRegimentSelection(); this.sidebarView = 'selection'; this.activeRegiment = null; const s = this.w.structures.find(s => s.team === this.team && s.site === this.team && s.building === building); this.selected.clear(); if (s && !this.w.players[this.team].eliminated) this.selected.add(s.id); }
+  selectGate(site = this.team) { const g = this.w.gates.find(g => g.site === site && g.owner === this.team); if (!g) return; this.clearRegimentSelection(); this.sidebarView = 'gate'; this.activeGateSite = site; this.activeRegiment = null; this.selected.clear(); if (this.w.units.some(u => u.id === g.id && u.hp > 0)) this.selected.add(g.id); this.view.zoom = 45; this.view.center({ x: MAP.bases[site].x * 0.64, z: MAP.bases[site].z * 0.64 }); this.view.resize(); this.centerCursor(); }
+  selectTerritory(site: number) { const t = this.w.territories[site], s = this.w.structures.find(s => s.site === site && s.building === 'base'); if (!t?.captured || t.owner !== this.team || !s) return; this.clearRegimentSelection(); this.sidebarView = 'selection'; this.activeRegiment = null; this.selected.clear(); this.selected.add(s.id); this.view.zoom = 65; this.view.center(s); this.view.resize(); this.centerCursor(); }
   selectArmy() { this.clearRegimentSelection(); this.wholeArmy = true; this.sidebarView = 'selection'; this.activeRegiment = null; this.selected.clear(); this.refreshTroopSelection(); }
   selectRegiment(index: number, add = false) { if (index < 0 || index >= RULES.regimentCount) return; this.sidebarView = 'selection'; this.activeRegiment = index; if (!add) { this.selected.clear(); this.clearRegimentSelection(); } this.selectedRegimentIndices.add(index); this.refreshTroopSelection(); }
   assignRegiment(index: number) {
     if (index < 0 || index >= RULES.regimentCount) return;
-    const troops = this.w.units.filter(u => this.selected.has(u.id) && u.team === 0 && isTroop(u.kind) && u.garrison === undefined);
+    const troops = this.w.units.filter(u => this.selected.has(u.id) && u.team === this.team && isTroop(u.kind) && u.garrison === undefined);
     if (!troops.length) return;
-    const occupied = this.w.units.some(u => u.team === 0 && u.regiment === index && u.hp > 0 && isTroop(u.kind) && !troops.includes(u));
-    const r = this.w.regiments.find(r => r.team === 0 && r.index === index)!;
-    const following = troops.every(u => u.order === 'follow') && (!occupied || r.movement === 'follow');
-    // Keep current destinations. An escort assigned to an empty/escort group
-    // continues following; joining a detached group keeps its last destination.
-    for (const u of troops) { u.regiment = index; u.tactical = !following; if (!following && u.order === 'follow') u.order = 'move'; }
-    if (!occupied) {
-      r.anchor = { x: troops.reduce((s, u) => s + u.x, 0) / troops.length, z: troops.reduce((s, u) => s + u.z, 0) / troops.length };
-      r.goal = { ...r.anchor }; r.movement = following ? 'follow' : 'hold'; r.target = undefined;
-    }
+    this.dispatch({ type: 'assign', ids: troops.map(u => u.id), index });
     this.clearRegimentSelection(); this.selectedRegimentIndices.add(index); this.activeRegiment = index;
   }
 }

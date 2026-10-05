@@ -1,27 +1,27 @@
 import { ABILITIES, FORMATIONS, ITEMS, MAP, RULES, SKILLS, TEAMS, UPGRADES, SHOP_TOMES, TROOP_COSTS, TROOP_ROLES, TARGET_PRIORITIES, isTroop, ranks, troopKinds, type Ability, type Building, type SkillId, type TroopKind, type ItemId, type ItemSlot, type OutpostBuilding, type Support } from '../game/config';
-import { buildingLevel, cycleCost, costText, productionBurn, resourceIncome, startUpgrade, unlocked, upgradeReason } from '../game/economy';
-import { cast } from '../game/abilities';
-import { command, commandRegiment } from '../game/commands';
-import { skillPoints, skillReason, trainSkill, activeSlots } from '../game/skills';
+import { buildingLevel, cycleCost, costText, productionBurn, resourceIncome, unlocked, upgradeReason } from '../game/economy';
+import { skillPoints, skillReason, activeSlots } from '../game/skills';
 import { buildingNames, selectedStructure } from '../game/structures';
 import { refreshStats, xpRequired } from '../game/hero';
-import { merchant, startCraft, inSafeZone } from '../game/objectives';
+import { inSafeZone } from '../game/objectives';
 import { spawn } from '../game/world';
 import { ABILITY_KEYS, learnedAbilities, syncAbilityBindings } from '../game/hotkeys';
 import { selectedRegiments } from '../game/formations';
-import { atMerchant, abilityRank, buyItem, sellItem, buyConsumable, craftReason, equipItem, unequipItem, maxMana, trainHero, trainingReason, type Training } from '../game/items';
+import { atMerchant, abilityRank, craftReason, maxMana, trainingReason, type Training } from '../game/items';
 import { heroProgressionPanel, equipmentPanel, merchantPanel, workshopPanel } from './hero-panels';
 import { gatePanel, territoriesPanel, outpostPanel, updateGatePanel, updateOutpostPanel } from './territory-panels';
-import { toggleGate, repairGate, buildTower, garrisonUnit, leaveTower, gatePosition } from '../game/gates';
-import { buildOutpost } from '../game/outposts';
-import { supportReason, useSupport } from '../game/support';
+import { gatePosition } from '../game/gates';
+import { supportReason } from '../game/support';
 import type { World, Formation, Engagement, Priority, Order } from '../game/types';
 import type { Input } from '../view/input';
+import { localPlayer, allied } from '../game/match';
+const escape = (value: unknown) => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const setText = (id: string, value: string) => { const e = document.getElementById(id); if (e && e.textContent !== value) e.textContent = value; };
 export class HUD {
+  private get team() { return localPlayer(this.w); }
   speed = 1; editingRegiment = 0; private context = ''; private wasTrading = false;
   constructor(private w: World, private input: Input) {
-    document.querySelector('#pause')!.addEventListener('click', () => { w.paused = !w.paused; });
+    document.querySelector('#pause')!.addEventListener('click', () => { if (!w.networked) this.input.dispatch({ type: 'pause' }); });
     document.querySelector('#hud')!.addEventListener('click', e => this.click((e.target as HTMLElement).closest('button')));
     document.querySelector('#hud')!.addEventListener('change', e => this.change(e.target as HTMLInputElement));
     this.update();
@@ -33,8 +33,8 @@ export class HUD {
     let content = '';
     if (this.input.sidebarView === 'gate') content = gatePanel(w, this.input.activeGateSite);
     else if (this.input.sidebarView === 'territories') content = territoriesPanel(w);
-    else if (this.input.sidebarView === 'items') content = equipmentPanel(w.players[0]);
-    else if (this.input.sidebarView === 'merchant') content = merchantPanel(w.players[0]);
+    else if (this.input.sidebarView === 'items') content = equipmentPanel(w.players[this.team]);
+    else if (this.input.sidebarView === 'merchant') content = merchantPanel(w.players[this.team]);
     else if (this.input.sidebarView === 'hero') content = `<h2 id="selection-name">Hero</h2><p id="selection-stats"></p><h2>Hero command</h2><div class="buttons"><button data-action="gather">F · Gather army</button><button data-action="stop-escorts">H · Stop hero & escorts</button></div><p id="escort-status"></p><div class="buttons"><button data-escort-layout="ring">Ring</button><button data-escort-layout="vanguard">Vanguard</button><button data-escort-layout="rearguard">Rear guard</button></div><label>March at army speed<input id="march-army" type="checkbox"></label><label>Hero target priority<select id="hero-priority">${Object.entries(TARGET_PRIORITIES).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label><label>Automatic engagement<input id="auto-tracking" type="checkbox"></label><p>Move the hero and escorts follow. Select 1–9 then F to attach a regiment; its own move/attack order detaches it. Shift+F gathers the whole army from any selection. X overrides automatic targets.</p>${heroProgressionPanel()}<h2>Abilities</h2><div id="abilities"></div>`;
     else if (s && w.territories[s.site].captured) content = outpostPanel(s.site);
     else if (s) {
@@ -52,37 +52,37 @@ export class HUD {
       else content += `<p>Press Tab for hero progression; K for keep upgrades. Click the barracks for troop production. Each resource site has its own extraction controls.</p>`;
       content += `<details><summary>Central objectives</summary><p id="boss-status"></p><button data-action="boss">Attack boss with selected</button><p id="merchant-status"></p><button data-trade="buy">Buy healing · 90 gold</button><button data-trade="sell-sword">Sell sword · 100 gold</button><button data-trade="sell-armor">Sell armor · 130 gold</button></details>`;
     }
-    document.querySelector('#hud')!.innerHTML = `${common}${content}<details><summary>Match info & developer controls</summary><div id="scores"></div><div id="log"></div><div class="buttons">${['resources', 'xp', 'tier', 'roster', 'ai', 'invulnerable'].map(x => `<button data-debug="${x}">${x === 'resources' ? '+ resources' : x === 'xp' ? '+ XP' : x}</button>`).join('')}</div><label>Simulation speed <select id="speed"><option>1</option><option>2</option><option>4</option></select></label></details>`;
+    document.querySelector('#hud')!.innerHTML = `${common}${content}<details><summary>Match info${w.networked ? '' : ' & developer controls'}</summary><div id="scores"></div><div id="log"></div>${w.networked ? '' : `<div class="buttons">${['resources', 'xp', 'tier', 'roster', 'ai', 'invulnerable'].map(x => `<button data-debug="${x}">${x === 'resources' ? '+ resources' : x === 'xp' ? '+ XP' : x}</button>`).join('')}</div><label>Simulation speed <select id="speed"><option>1</option><option>2</option><option>4</option></select></label>`}</details>`;
     document.querySelector('#hud')!.scrollTop = 0;
   }
   private click(b: HTMLButtonElement | null) {
     if (!b) return; const w = this.w;
     if (b.dataset.select) this.input.selectBuilding(b.dataset.select as Building);
     if (b.dataset.gateSite !== undefined) this.input.selectGate(Number(b.dataset.gateSite));
-    if (b.dataset.gateToggle !== undefined) toggleGate(w, Number(b.dataset.gateToggle));
-    if (b.dataset.gateRepair !== undefined) { repairGate(w, Number(b.dataset.gateRepair)); this.input.selectGate(Number(b.dataset.gateRepair)); }
-    if (b.dataset.gateTower !== undefined) buildTower(w, Number(b.dataset.gateTower));
-    if (b.dataset.mount) garrisonUnit(w, this.input.activeGateSite, Number(b.dataset.mount));
-    if (b.dataset.dismount) { const u = w.units.find(u => u.id === Number(b.dataset.dismount) && u.team === 0); if (u) leaveTower(w, u); }
+    if (b.dataset.gateToggle !== undefined) this.input.dispatch({ type: 'gate', action: 'toggle', site: Number(b.dataset.gateToggle) });
+    if (b.dataset.gateRepair !== undefined) { this.input.dispatch({ type: 'gate', action: 'repair', site: Number(b.dataset.gateRepair) }); this.input.selectGate(Number(b.dataset.gateRepair)); }
+    if (b.dataset.gateTower !== undefined) this.input.dispatch({ type: 'gate', action: 'tower', site: Number(b.dataset.gateTower) });
+    if (b.dataset.mount) this.input.dispatch({ type: 'garrison', site: this.input.activeGateSite, unit: Number(b.dataset.mount) });
+    if (b.dataset.dismount) this.input.dispatch({ type: 'dismount', unit: Number(b.dataset.dismount) });
     if (b.dataset.territory !== undefined) this.input.selectTerritory(Number(b.dataset.territory));
-    if (b.dataset.outpost) buildOutpost(w, Number(b.dataset.site), b.dataset.outpost as OutpostBuilding);
+    if (b.dataset.outpost) this.input.dispatch({ type: 'outpost', site: Number(b.dataset.site), building: b.dataset.outpost as OutpostBuilding });
     if (b.dataset.panel) { this.input.selectHero(); this.input.sidebarView = b.dataset.panel as 'items' | 'merchant'; }
-    if (b.dataset.upgrade) { const s = selectedStructure(w, this.input.selected); if (s?.site === 0 && s.building === b.dataset.upgrade) startUpgrade(w, 0, s.building); }
-    if (b.dataset.skill && this.input.sidebarView === 'hero') trainSkill(w, 0, b.dataset.skill as SkillId);
-    if (b.dataset.training && this.input.sidebarView === 'hero') trainHero(w, b.dataset.training as Training);
-    if (b.dataset.style) w.players[0].combatStyle = b.dataset.style as 'melee' | 'ranged';
-    if (b.dataset.escortLayout) w.players[0].escortLayout = b.dataset.escortLayout as 'ring' | 'vanguard' | 'rearguard';
-    if (b.dataset.equip) equipItem(w, 0, b.dataset.equip as ItemId);
-    if (b.dataset.unequip) unequipItem(w, 0, b.dataset.unequip as ItemSlot);
-    if (b.dataset.buyItem) buyItem(w, b.dataset.buyItem as ItemId);
-    if (b.dataset.sellItem) sellItem(w, b.dataset.sellItem as ItemId);
-    if (b.dataset.consumable) buyConsumable(w, b.dataset.consumable as 'healing' | 'mana' | keyof typeof SHOP_TOMES);
+    if (b.dataset.upgrade) { const s = selectedStructure(w, this.input.selected); if (s?.site === this.team && s.building === b.dataset.upgrade) this.input.dispatch({ type: 'upgrade', building: s.building }); }
+    if (b.dataset.skill && this.input.sidebarView === 'hero') this.input.dispatch({ type: 'skill', skill: b.dataset.skill as SkillId });
+    if (b.dataset.training && this.input.sidebarView === 'hero') this.input.dispatch({ type: 'training', training: b.dataset.training as Training });
+    if (b.dataset.style) this.input.dispatch({ type: 'heroSetting', field: 'combatStyle', value: b.dataset.style });
+    if (b.dataset.escortLayout) this.input.dispatch({ type: 'heroSetting', field: 'escortLayout', value: b.dataset.escortLayout });
+    if (b.dataset.equip) this.input.dispatch({ type: 'equip', item: b.dataset.equip as ItemId });
+    if (b.dataset.unequip) this.input.dispatch({ type: 'unequip', slot: b.dataset.unequip as ItemSlot });
+    if (b.dataset.buyItem) this.input.dispatch({ type: 'buy', item: b.dataset.buyItem as ItemId });
+    if (b.dataset.sellItem) this.input.dispatch({ type: 'sell', item: b.dataset.sellItem as ItemId });
+    if (b.dataset.consumable) this.input.dispatch({ type: 'consumable', item: b.dataset.consumable as 'healing' | 'mana' | keyof typeof SHOP_TOMES });
     if (b.dataset.troop) this.changeCount(b.dataset.troop as TroopKind, 1);
     if (b.dataset.minus) this.changeCount(b.dataset.minus as TroopKind, -1);
-    if (b.dataset.ability) cast(w, 0, b.dataset.ability as Ability);
-    if (b.dataset.craft) startCraft(w, 0, b.dataset.craft as ItemId);
-    if (b.dataset.support) useSupport(w, 0, b.dataset.support as Support);
-    if (b.dataset.trade) merchant(w, b.dataset.trade as 'buy' | 'sell-sword' | 'sell-armor');
+    if (b.dataset.ability) this.input.dispatch({ type: 'ability', ability: b.dataset.ability as Ability });
+    if (b.dataset.craft) this.input.dispatch({ type: 'craft', item: b.dataset.craft as ItemId });
+    if (b.dataset.support) this.input.dispatch({ type: 'support', support: b.dataset.support as Support });
+    if (b.dataset.trade) this.input.dispatch(b.dataset.trade === 'buy' ? { type: 'consumable', item: 'healing' } : { type: 'sell', item: b.dataset.trade === 'sell-sword' ? 'sword' : 'armor' });
     if (b.dataset.regiment !== undefined) { this.editingRegiment = Number(b.dataset.regiment); this.input.selectRegiment(this.editingRegiment); }
     if (b.dataset.formation) this.input.setFormation(b.dataset.formation as Formation);
     if (b.dataset.order === 'advance') this.input.attackAtCursor();
@@ -94,43 +94,44 @@ export class HUD {
     if (b.dataset.action === 'stop-escorts') this.input.holdHeroEscorts();
     if (b.dataset.action === 'gate') this.input.selectGate();
     if (b.dataset.action === 'territories') { this.input.clearSelection(); this.input.sidebarView = 'territories'; }
-    if (b.dataset.action === 'travel-gate') { const h = w.units.find(u => u.team === 0 && u.kind === 'hero' && u.hp > 0); if (h) command(w, new Set([h.id]), 'move', gatePosition(this.input.activeGateSite)); }
-    if (b.dataset.action === 'travel-merchant') { this.input.selectHero(); command(w, this.input.selected, 'move', MAP.merchant); this.input.sidebarView = 'merchant'; }
+    if (b.dataset.action === 'travel-gate') { const h = w.units.find(u => u.team === this.team && u.kind === 'hero' && u.hp > 0); if (h) this.input.dispatch({ type: 'order', ids: [h.id], order: 'move', point: gatePosition(this.input.activeGateSite) }); }
+    if (b.dataset.action === 'travel-merchant') { this.input.selectHero(); this.input.orderSelection('move', MAP.merchant); this.input.sidebarView = 'merchant'; }
     if (b.dataset.action === 'assign') this.input.assignRegiment(this.editingRegiment);
     if (b.dataset.action === 'boss') { const boss = w.units.find(u => u.kind === 'boss'); if (boss) this.input.orderSelection('attack', boss, boss.id); }
     if (b.dataset.debug) this.debug(b.dataset.debug); this.update();
   }
   private changeCount(kind: TroopKind, amount: number) {
-    const selected = selectedStructure(this.w, this.input.selected); if (selected?.site !== 0 || selected.building !== 'barracks') return;
-    const p = this.w.players[0], total = Object.values(p.production.counts).reduce((a, b) => a + b, 0);
-    if (unlocked(p, kind) && (amount < 0 || total < RULES.maxCycleUnits)) p.production.counts[kind] = Math.max(0, p.production.counts[kind] + amount);
+    const selected = selectedStructure(this.w, this.input.selected); if (selected?.site !== this.team || selected.building !== 'barracks') return;
+    this.input.dispatch({ type: 'roster', kind, delta: amount < 0 ? -1 : 1 });
   }
   private change(field: HTMLInputElement) {
-    const p = this.w.players[0], s = selectedStructure(this.w, this.input.selected), r = this.w.regiments.find(r => r.team === 0 && r.index === this.editingRegiment)!;
+    const s = selectedStructure(this.w, this.input.selected);
+    const r = this.w.regiments.find(r => r.team === this.team && r.index === this.editingRegiment)!;
     if (field.dataset.bind) { this.input.assignAbility(field.dataset.bind as Ability, field.value); field.blur(); }
-    if (field.id === 'hero-priority') { p.heroPriority = field.value as Priority; const hero = this.w.units.find(u => u.team === 0 && u.kind === 'hero'); if (hero) hero.autoTarget = undefined; }
-    if (field.id === 'auto-tracking') p.autoTracking = field.checked;
-    if (field.id === 'march-army') p.marchWithArmy = field.checked;
-    if (field.id === 'outpost-regiment' && s && this.w.territories[s.site].captured) this.w.territories[s.site].regiment = Number(field.value);
-    if (s?.site === 0 && s.building === 'barracks') {
-      if (field.id === 'interval') { p.production.interval = Number(field.value); p.production.timer = p.production.interval; }
-      if (field.id === 'reserve') p.production.reserve = Math.max(0, Math.min(5000, Number(field.value) || 0));
-      if (field.id === 'spawn-regiment') p.production.regiment = Number(field.value);
+    if (field.id === 'hero-priority') this.input.dispatch({ type: 'heroSetting', field: 'heroPriority', value: field.value });
+    if (field.id === 'auto-tracking') this.input.dispatch({ type: 'heroSetting', field: 'autoTracking', value: field.checked });
+    if (field.id === 'march-army') this.input.dispatch({ type: 'heroSetting', field: 'marchWithArmy', value: field.checked });
+    if (field.id === 'outpost-regiment' && s && this.w.territories[s.site].captured) this.input.dispatch({ type: 'outpostRegiment', site: s.site, index: Number(field.value) });
+    if (s?.site === this.team && s.building === 'barracks') {
+      if (field.id === 'interval') this.input.dispatch({ type: 'production', field: 'interval', value: Number(field.value) });
+      if (field.id === 'reserve') this.input.dispatch({ type: 'production', field: 'reserve', value: Math.max(0, Math.min(5000, Number(field.value) || 0)) });
+      if (field.id === 'spawn-regiment') this.input.dispatch({ type: 'production', field: 'regiment', value: Number(field.value) });
     }
-    if (field.id === 'engagement') r.engagement = field.value as Engagement;
-    if (field.id === 'priority') { for (const group of selectedRegiments(this.w, this.input.selected, this.input.activeRegiment)) group.priority = field.value as Priority; for (const u of this.w.units.filter(u => u.team === 0)) u.autoTarget = undefined; } if (field.id === 'movement') commandRegiment(this.w, 0, r.index, field.value as Order);
-    if (field.id === 'speed') this.speed = Number(field.value);
+    if (field.id === 'engagement') this.input.dispatch({ type: 'regimentSetting', indices: [r.index], field: 'engagement', value: field.value as Engagement });
+    if (field.id === 'priority') this.input.dispatch({ type: 'regimentSetting', indices: selectedRegiments(this.w, this.input.selected, this.input.activeRegiment).map(r => r.index), field: 'priority', value: field.value as Priority });
+    if (field.id === 'movement') this.input.dispatch({ type: 'order', ids: [], regiments: [r.index], order: field.value as Order, point: { ...r.goal }, target: field.value === 'attack' ? r.target : undefined });
+    if (field.id === 'speed' && !this.w.networked) this.speed = Number(field.value);
     if (field.tagName === 'SELECT') field.blur(); this.update();
   }
   private debug(action: string) {
-    const p = this.w.players[0]; if (p.eliminated) return;
+    const p = this.w.players[this.team]; if (this.w.networked || p.eliminated) return;
     if (action === 'resources') { p.gold += 1500; p.wood += 500; p.ore += 500; } if (action === 'xp') p.xp += 2000;
-    if (action === 'tier') { p.tier = Math.min(4, p.tier + 1); p.barracks = Math.min(3, p.tier + 1); p.crafting = 1; p.xp += p.bankedXP; p.bankedXP = 0; refreshStats(this.w, 0); }
+    if (action === 'tier') { p.tier = Math.min(4, p.tier + 1); p.barracks = Math.min(3, p.tier + 1); p.crafting = 1; p.xp += p.bankedXP; p.bankedXP = 0; refreshStats(this.w, this.team); }
     if (action === 'ai') this.w.aiEnabled = !this.w.aiEnabled; if (action === 'invulnerable') this.w.invulnerable = !this.w.invulnerable;
-    if (action === 'roster') for (const [i, kind] of troopKinds.entries()) spawn(this.w, 0, kind, { x: MAP.bases[0].x * 0.82 + i * 2, z: MAP.bases[0].z * 0.82 });
+    if (action === 'roster') for (const [i, kind] of troopKinds.entries()) spawn(this.w, this.team, kind, { x: MAP.bases[this.team].x * 0.82 + i * 2, z: MAP.bases[this.team].z * 0.82 });
   }
   update() {
-    const w = this.w, p = w.players[0], hero = w.units.find(u => u.team === 0 && u.kind === 'hero' && u.hp > 0);
+    const w = this.w, p = w.players[this.team], hero = w.units.find(u => u.team === this.team && u.kind === 'hero' && u.hp > 0);
     const trading = atMerchant(w);
     if (trading && !this.wasTrading) { this.input.selectHero(); this.input.sidebarView = 'merchant'; } this.wasTrading = trading;
     syncAbilityBindings(p, this.input.abilityBindings);
@@ -147,7 +148,7 @@ export class HUD {
     });
     setText('formation-status', formationGroups.length ? `${formationGroups.length === 1 ? `Regiment ${formationGroups[0].index + 1}` : `${formationGroups.length} selected regiments`} · ${formationGroups.every(r => r.formation === formationGroups[0].formation) ? FORMATIONS[formationGroups[0].formation].name : 'Mixed formations'}` : '');
     document.querySelectorAll<HTMLButtonElement>('[data-regiment]').forEach(b => {
-      const index = Number(b.dataset.regiment), troops = w.units.filter(u => u.team === 0 && u.hp > 0 && isTroop(u.kind) && u.garrison === undefined && u.regiment === index);
+      const index = Number(b.dataset.regiment), troops = w.units.filter(u => u.team === this.team && u.hp > 0 && isTroop(u.kind) && u.garrison === undefined && u.regiment === index);
       b.textContent = `${index + 1} · ${troops.length}`; b.title = `Regiment ${index + 1}: ${troops.length} troops. Ctrl+${index + 1} assigns selection.`;
       b.classList.toggle('active', this.input.activeRegiment === index || troops.length > 0 && troops.every(u => this.input.selected.has(u.id)));
     });
@@ -178,7 +179,7 @@ export class HUD {
         document.querySelectorAll<HTMLButtonElement>('[data-training]').forEach(b => { const kind = b.dataset.training as Training, next = p.training[kind] + 1; b.textContent = `${kind} ${p.training[kind]} / 3 · ${200 * next}g / ${30 * next}o`; b.disabled = !!trainingReason(p, kind); setText(`training-${kind}`, trainingReason(p, kind) ?? 'Train now'); });
         document.querySelectorAll<HTMLButtonElement>('[data-style]').forEach(b => b.classList.toggle('active', b.dataset.style === p.combatStyle));
         document.querySelectorAll<HTMLButtonElement>('[data-escort-layout]').forEach(b => b.classList.toggle('active', b.dataset.escortLayout === p.escortLayout));
-        const escorts = w.regiments.filter(r => r.team === 0 && r.movement === 'follow' && w.units.some(u => u.hp > 0 && u.team === 0 && u.regiment === r.index && isTroop(u.kind) && u.garrison === undefined && !u.tactical));
+        const escorts = w.regiments.filter(r => r.team === this.team && r.movement === 'follow' && w.units.some(u => u.hp > 0 && u.team === this.team && u.regiment === r.index && isTroop(u.kind) && u.garrison === undefined && !u.tactical));
         setText('escort-status', `${escorts.length} regiment${escorts.length === 1 ? '' : 's'} following · Tab, then F: gather · Tab, then H: stop`);
         this.field('hero-priority', p.heroPriority);
         for (const [id, value] of [['auto-tracking', p.autoTracking], ['march-army', p.marchWithArmy]] as const) { const field = document.querySelector<HTMLInputElement>(`#${id}`); if (field) field.checked = value; }
@@ -199,7 +200,7 @@ export class HUD {
       const troops = selected.filter(u => u.kind !== 'hero'); if (troops.length && troops.every(u => u.regiment === troops[0].regiment)) this.editingRegiment = troops[0].regiment;
       setText('selection-name', selected.length === 1 && selected[0].kind === 'hero' ? `${ranks[p.tier - 1]} · Level ${p.level}` : `${selected.length} units selected`);
       setText('selection-stats', selected.length === 1 ? `HP ${Math.ceil(selected[0].hp)} / ${Math.ceil(selected[0].maxHp)} · Damage ${Math.round(selected[0].damage)} · Mana ${Math.floor(p.mana)}` : 'Right-click to move or attack · Drag to select a group');
-      const r = w.regiments.find(r => r.team === 0 && r.index === this.editingRegiment)!; setText('regiment-status', `Regiment ${r.index + 1} · Cohesion ${Math.round(r.cohesion)}%`);
+      const r = w.regiments.find(r => r.team === this.team && r.index === this.editingRegiment)!; setText('regiment-status', `Regiment ${r.index + 1} · Cohesion ${Math.round(r.cohesion)}%`);
       for (const k of ['movement', 'engagement', 'priority'] as const) this.field(k, r[k]);
     }
     const abilities = document.querySelector('#abilities');
@@ -207,7 +208,7 @@ export class HUD {
     document.querySelectorAll<HTMLButtonElement>('[data-ability]').forEach(b => { const a = b.dataset.ability as Ability; b.textContent = `${this.input.abilityBindings[a]?.toUpperCase() ?? 'Unassigned'} · ${ABILITIES[a].name} ${abilityRank(p, a)} · ${p.cooldowns[a] > 0 ? `${Math.ceil(p.cooldowns[a])}s` : `${ABILITIES[a].cost} mana`}`; b.disabled = !hero || w.paused || p.mana < ABILITIES[a].cost || p.cooldowns[a] > 0; });
     setText('items-status', p.craft ? `Crafting ${ITEMS[p.craft.item].name} · ${Math.ceil(p.craft.remaining)}s` : 'Ready to craft. Equipment slots prevent duplicate bonuses.');
     document.querySelectorAll<HTMLButtonElement>('[data-craft]').forEach(b => { const id = b.dataset.craft as ItemId; b.disabled = !!craftReason(p, id); setText(`craft-reason-${id}`, craftReason(p, id) ?? 'Ready'); });
-    document.querySelectorAll<HTMLButtonElement>('[data-support]').forEach(b => { const id = b.dataset.support as Support; b.disabled = !!supportReason(w, 0, id); setText(`support-reason-${id}`, supportReason(w, 0, id) ?? 'Ready'); });
+    document.querySelectorAll<HTMLButtonElement>('[data-support]').forEach(b => { const id = b.dataset.support as Support; b.disabled = !!supportReason(w, this.team, id); setText(`support-reason-${id}`, supportReason(w, this.team, id) ?? 'Ready'); });
     setText('siege-status', p.siegeUntil > w.time ? `Siege ammunition active · ${Math.ceil(p.siegeUntil - w.time)}s left` : 'Siege ammunition inactive');
     document.querySelectorAll<HTMLButtonElement>('[data-buy-item]').forEach(b => { const id = b.dataset.buyItem as ItemId; b.disabled = !trading || !!p.items[id] || p.gold < ITEMS[id].buy; });
     document.querySelectorAll<HTMLButtonElement>('[data-sell-item]').forEach(b => { const id = b.dataset.sellItem as ItemId; b.disabled = !trading || !p.items[id] || w.merchantGold < ITEMS[id].sell; });
@@ -215,11 +216,11 @@ export class HUD {
     setText('merchant-status', hero && inSafeZone(hero) ? 'Commander in trading range' : 'Move commander into the merchant circle to trade');
     document.querySelectorAll<HTMLButtonElement>('[data-trade]').forEach(b => { b.disabled = !hero || !inSafeZone(hero) || (b.dataset.trade === 'buy' ? p.gold < 90 : b.dataset.trade === 'sell-sword' ? !p.items.sword || w.merchantGold < 100 : !p.items.armor || w.merchantGold < 130); });
     const boss = w.units.find(u => u.kind === 'boss'); setText('boss-status', boss ? `Iron Golem · ${Math.ceil(boss.hp)} HP · contestable arena` : 'Iron Golem defeated');
-    document.querySelector('#scores')!.innerHTML = w.players.map(p => `<p>${TEAMS[p.id].name}: ${p.eliminated ? 'eliminated' : `Tier ${p.tier} · Lv ${p.level}`}</p>`).join('');
-    document.querySelector('#log')!.innerHTML = w.events.map(e => `<p>${e}</p>`).join(''); this.field('speed', this.speed);
+    document.querySelector('#scores')!.innerHTML = w.players.map(p => `<p>${TEAMS[p.id].name} · ${escape(p.name)} · Team ${p.alliance + 1}${p.id === this.team ? ' · You' : allied(w, this.team, p.id) ? ' · Ally' : ''}: ${p.controller === 'closed' ? 'closed' : p.eliminated ? 'eliminated' : `Tier ${p.tier} · Lv ${p.level}`}</p>`).join('');
+    document.querySelector('#log')!.innerHTML = w.events.map(e => `<p>${escape(e)}</p>`).join(''); this.field('speed', this.speed);
     setText('selected', this.input.activeRegiment !== null && !selected.length ? `Regiment ${this.input.activeRegiment + 1} is empty · Select troops with 0, then Ctrl+${this.input.activeRegiment + 1} to assign` : 'WASD: cursor · Arrows: camera · X: attack · Enter: move · Tab: hero · 1–9: regiments · F2/F3/F4: formations');
     setText('time', `${Math.floor(w.time / 60)}:${String(Math.floor(w.time % 60)).padStart(2, '0')}`); setText('pause', w.paused ? 'Resume' : 'Pause');
-    if (w.winner !== null) { const outcome = document.querySelector<HTMLElement>('#outcome')!; outcome.hidden = false; if (!outcome.innerHTML) { outcome.innerHTML = `<h1>${w.winner === 0 ? 'Victory' : 'Defeat'}</h1><button id="restart">New match</button>`; document.querySelector('#restart')!.addEventListener('click', () => location.reload()); } }
+    if (w.winner !== null) { const outcome = document.querySelector<HTMLElement>('#outcome')!; outcome.hidden = false; if (!outcome.innerHTML) { outcome.innerHTML = `<h1>${w.winner >= 0 && allied(w, w.winner, this.team) ? 'Victory' : 'Defeat'}</h1><button id="restart">New match</button>`; document.querySelector('#restart')!.addEventListener('click', () => document.querySelector<HTMLButtonElement>('#leave-match')!.click()); } }
   }
   private field(id: string, value: string | number) { const f = document.getElementById(id) as HTMLInputElement | null; if (f && document.activeElement !== f) f.value = String(value); }
 }

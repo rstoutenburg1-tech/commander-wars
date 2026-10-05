@@ -1,19 +1,33 @@
 # Commander Wars
 
-A small single-player, four-corner fantasy RTS prototype. TypeScript, Three.js, Vite; original procedural cartoon art and no backend. Destroy the three AI keeps to win.
+A small four-corner fantasy RTS prototype with solo practice and online matches for up to four commanders. TypeScript, Three.js, Vite and a small authoritative Node/WebSocket server; original procedural cartoon art. Defeat the opposing keeps with your team.
 
 ## Run
 
 Requires Node.js 20.19+ or 22.12+ and pnpm.
 
-**On this Windows PC:** double-click `Play.cmd`. It can use the Codex bundled runtime. Keep its terminal open while playing. If a server is already running, open <http://127.0.0.1:5173> directly.
+**On this Windows PC:** double-click `Play.cmd` for local play, or `Play Online.cmd` to host friends across the internet. Both can use the Codex bundled runtime. Keep the hosting window open while playing. A running production server is at <http://127.0.0.1:8787>.
 
 ```sh
 pnpm install
-pnpm dev
+pnpm build
+pnpm start
 ```
 
-Open the local URL printed by Vite. `pnpm build` creates a static site in `dist`; `pnpm preview` serves that build.
+Open <http://localhost:8787>. `pnpm build` checks both client and server and creates the browser build in `dist`; `pnpm start` serves that build and the lobby server together. For development, run `pnpm server:dev` and `pnpm dev` in separate terminals; Vite proxies `/ws` to port 8787. `pnpm preview` serves a static preview without a multiplayer server.
+
+## Online matches
+
+1. Run `Play Online.cmd` and share the printed `https://...trycloudflare.com` game URL with your friends. The launcher downloads Cloudflare's helper on first use and exposes the production game server through a temporary HTTPS link. Keep the PC awake and the launcher running. The URL changes on restart; it is a playtest link, not permanent hosting. [Cloudflare Quick Tunnel documentation](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
+2. Open that URL, enter your name and choose **Host a lobby**. Share its six-character lobby code or **Copy invite link**. Friends open the same website and choose **Join lobby**.
+3. The host sets each unoccupied section to **Human**, **AI** or **Closed**, assigns teams and picks **Easy**, **Normal** or **Hard** for each AI. **2 vs 2** pairs Blue/Red against Green/Purple; the host can change any team, and guests can choose their own team. You can play two friends against two AI, four friends in 2v2, free for all, or smaller matches with closed sections.
+4. Every human must join and click **Ready**. The host starts the match. Setup changes reset guest readiness. Closed sections have no keep or army. **Tab**, **1–9**, the sidebar and other existing controls operate your own section.
+
+Allies cannot damage or target each other, can benefit from nearby support abilities, and win together. An eliminated player can watch while their teammate continues. AI difficulty changes decision speed, opening timing and tactics; it does not grant resource or combat bonuses. Multiplayer runs continuously and has no pause, speed controls or developer grants.
+
+Lost connections automatically reconnect to the same seat and match. After 60 seconds disconnected, AI temporarily takes over; reconnecting restores human control. **Leave match** hands the section to AI immediately. Rooms are kept in memory and expire after everyone has been offline for five minutes. Restarting the server ends its lobbies and matches.
+
+For a permanent internet address, run `pnpm install --frozen-lockfile`, `pnpm build` and `pnpm start` on a Node service that supports persistent WebSockets. `PORT` and `HOST` configure the listener; the default is port 8787 on all interfaces. Serve HTTPS and proxy `/ws` to the same process. No database or account system is required for this prototype.
 
 ## Milestones
 
@@ -33,6 +47,8 @@ Open the local URL printed by Vite. `pnpm build` creates a static site in `dist`
 14. Colorful village terrain, distinct troop/building models, animated combat and ability effects, and a fantasy game HUD.
 15. Centered, footprint-aware vanguard/rear guard formations with stable marching direction.
 16. Recurring material costs, earlier army choices, earned hero progression, unit counters, workshop supplies and resource-aware AI.
+17. Configurable human/AI/closed sections, alliances, shared team victory and fair AI difficulty.
+18. Lobby codes, online authoritative matches, per-player keyboard/sidebar controls, reconnects and an internet play launcher.
 
 Each milestone is committed as a runnable state. This is a mechanics prototype, not a balanced release.
 
@@ -48,7 +64,7 @@ Each milestone is committed as a runnable state. This is a mechanics prototype, 
 8. The workshop has seven recipes across two levels and repeatable army supplies. **Field resupply** costs 60g/50w/35o: withdraw the hero at least 22 units from enemies, then heal him and troops within 18 units by 20% and restore 20 cohesion, with a 45-second cooldown. Workshop II **Siege ammunition** costs 100g/60w/60o and raises archer/musketeer structure damage to 150% for 35 seconds, with a 75-second cooldown. **Items** shows five equipped slots and inventory; replacement gear does not stack. The merchant opens when the hero enters its safe area and offers 11 equipment items, healing/mana draughts and two permanent skill tomes. Legendary gear costs 2,100–2,800 gold. Select **Melee** or **Ranged** on the hero panel; basic melee deals 135 versus 45 ranged damage before upgrades.
 9. Select a regiment and press **F** to join the hero. **Shift+F** gathers all active regiments from any selection; **Tab then F** also gathers the army. Choose **Ring**, **Vanguard**, or **Rear guard**. Front/rear layouts center each row, account for the complete regiment footprint and keep every destination slot on the intended side of the hero where terrain permits. Marching direction follows commands and travel instead of weapon swings. Moving the hero leads its escorts; regiments break ranks to fight. Giving a regiment its own move/attack/hold order detaches it. **Tab then H** stops the hero and its escorts without changing detached regiments. **March at army speed** keeps the hero with nearby escorts; turn it off to travel independently. Command training adds +5% nearby troop damage per rank. Automatic engagement retains moving targets and reacquires after kills. Choose target classes on the hero or regiment panel; an explicit X/right-click attack takes priority. Plain movement avoids combat while traveling and resumes engagement on arrival.
 10. Select **Gate & tower**, or click your gate. Gates span each narrow approach, have **12,000 HP**, and block ground movement and fire while closed. Opening or closing costs **20 gold** and requires ownership. Your gate starts open; AI gates start closed and open for departures. Breach enemy gates by attacking them. A **900g / 150w / 120o**, 30-second tower adds **three garrison slots** for archers, musketeers or a hero. Bring them within 14 units and click **Station**. Tower occupants gain +6 ranged reach, +25% ranged damage and 35% protection; melee troops must breach the gate to reach them. Dismount with its button or a movement order. Breaching the gate destroys its tower and dismounts surviving occupants.
-11. Destroying a keep eliminates its commander/army and transfers its territory to the attacker. Select its ruined keep or **Captured bases** to build a local barracks, gold mine, forest or quarry. Resource production adds to your shared treasury. Local barracks uses the home roster/unlocks/interval/reserve, has a separate regiment assignment, and respects the shared 40-troop cap. Captured gates can be rebuilt for 400g / 100w / 100o. Destroy all three enemy keeps to win; losing your own keep ends the run. **New match** restarts immediately.
+11. Destroying a keep eliminates its commander/army and transfers its territory to the attacker. Select its ruined keep or **Captured bases** to build a local barracks, gold mine, forest or quarry. Resource production adds to your treasury. Local barracks uses the home roster/unlocks/interval/reserve, has a separate regiment assignment, and respects the shared 40-troop cap. Captured gates can be rebuilt for 400g / 100w / 100o. Defeat every opposing team to win; your team keeps fighting while any allied keep survives. **Leave match** returns to game setup.
 
 ## Controls
 
@@ -116,7 +132,9 @@ pnpm test
 pnpm build
 ```
 
-101 simulation/control tests cover production/reserves, construction, troop unlocks, hero progression/respawn, elimination, AI progress, formations, immediate replacement orders, destination arrival, partial selections, home/outpost reinforcement destinations, held positions, future escorts, abilities, merchant safety/prices/tomes, crafting tiers, equipment bonuses/swaps, hero melee/ranged damage, aura/marching, target retention/overrides/reacquisition, escort detachment, boss bounds/rewards/symmetry, ravine routing, skill prerequisites, Tier IV, cursor controls, hotkeys, gate ownership/full-lane collision/fire blocking/breaches, tower costs/capacity/range/damage/protection/dismounting, captured ownership/local income and paid outpost waves with a shared cap. Visual-event integration checks exercise all six spell types and expiry, real melee/arrow/musket attacks and cooldowns, charge impacts, elevated tower origins/targets and timed boss warnings/smashes.
+126 simulation/control/network tests cover production/reserves, construction, troop unlocks, hero progression/respawn, elimination, AI progress, formations, immediate replacement orders, destination arrival, partial selections, home/outpost reinforcement destinations, held positions, future escorts, abilities, merchant safety/prices/tomes, crafting tiers, equipment bonuses/swaps, hero melee/ranged damage, aura/marching, target retention/overrides/reacquisition, escort detachment, boss bounds/rewards/symmetry, ravine routing, skill prerequisites, Tier IV, cursor controls, hotkeys, gate ownership/full-lane collision/fire blocking/breaches, tower costs/capacity/range/damage/protection/dismounting, captured ownership/local income and paid outpost waves with a shared cap. Visual-event integration checks exercise all six spell types and expiry, real melee/arrow/musket attacks and cooldowns, charge impacts, elevated tower origins/targets and timed boss warnings/smashes.
+
+Multiplayer tests cover closed sections, friendly target/damage rejection, allied support and victory, fair AI difficulty, malformed commands, player-scoped orders/production/items/gates, lobby readiness, host permissions, team changes, action sequences, token resumes, AI takeover and static-file boundaries. Real WebSocket clients exercise mixed matches and all four human seats in 2v2. Two separate browser sessions verify mixed human/AI 2v2 setup, code joins, guest controls and upgrades, synchronized orders and Rally casts, dropped-connection recovery and full page reload/resume on both localhost and the public HTTPS tunnel. The setup also fits a narrow mobile viewport; the game itself is designed for desktop keyboard/mouse play.
 
 Balance checks cover recurring wood/ore costs at both barracks, shortage skipping without partial charges, all-base budgets, sustained mixed-wave material demand, earned progression without free promotion points, safe resupply/cooldowns, siege damage and expiry, actual unit counters, frontal/flanking/broken-wall charges, and a cheaper Tier I infantry group defeating Tier III cavalry. A twenty-minute AI economy test simulates steady troop losses and replacements without movement/combat; it validates resource solvency and development, not natural match outcomes. Twelve escort checks cover centered rows, 40-unit formations, unequal footprints, heading changes, physical settling and detached regiments. Browser checks use the real barracks/workshop controls, verify all-resource payments and budgets, promotion without free levels, resupply, timed siege damage, both guard layouts and the existing movement/hero flows without browser errors.
 
@@ -132,8 +150,8 @@ Expansion browser checks exercise Tab progression, K keep-only controls, sidebar
 
 Graphics browser checks cover the initial village, centered map overview, actual world selection of all six home buildings, melee/arrow/musket events, all six spell visuals, animated walking and frozen paused effects. They also render a populated 160-troop scene and check layouts at 1440×1000 and 1366×768. Shared primitives and vertex-color merging keep each animated pivot to one opaque draw call; the populated scene fell from about 4,983 to 1,652 draw calls during the visual pass. Frame-rate targets on player hardware have not been established.
 
-Resource costs, extraction rates and ability settings live in `src/game/config.ts`; hero growth is in `hero.ts`, ordinary attack matchups in `combat.ts`. Simulation systems are separate from rendering and UI. Add `?debug=1` to the URL to expose `window.commanderWars`. The **Match info & developer controls** section includes grants, promotion, roster spawning, AI/invulnerability toggles and simulation speed.
+Resource costs, extraction rates and ability settings live in `src/game/config.ts`; hero growth is in `hero.ts`, ordinary attack matchups in `combat.ts`. Simulation systems are separate from rendering and UI. Add `?debug=1` to start practice directly and expose `window.commanderWars`, or `?debug=1&setup=1` to use setup with the observation hook. Practice **Match info & developer controls** includes grants, promotion, roster spawning, AI/invulnerability toggles and simulation speed. Those controls are absent from network matches; the server validates player actions.
 
 ## Static hosting
 
-`pnpm build` produces `dist/`, which can be served on any static host. For Vercel, use the Vite preset, build command `pnpm build`, and output directory `dist`. No environment variables or external services are required.
+`dist/` can still be served on a static host for practice. Online play needs the Node/WebSocket server described above; static hosting alone cannot run shared matches. A separately hosted server can be entered under **Connection settings** on the setup screen.
