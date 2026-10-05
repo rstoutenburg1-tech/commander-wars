@@ -2,6 +2,8 @@
 
 A small four-corner fantasy RTS prototype with solo practice and online matches for up to four commanders. TypeScript, Three.js, Vite and a small authoritative Node/WebSocket server; original procedural cartoon art. Defeat the opposing keeps with your team.
 
+**Play online:** [commander-wars-online.onrender.com](https://commander-wars-online.onrender.com). Open this same link with friends, host a lobby and share its code or invite link. No installation or GitHub account is needed. The free host can take about a minute to wake up after being idle.
+
 ## Run
 
 Requires Node.js 20.19+ or 22.12+ and pnpm.
@@ -18,7 +20,7 @@ Open <http://localhost:8787>. `pnpm build` checks both client and server and cre
 
 ## Online matches
 
-1. Run `Play Online.cmd` and share the printed `https://...trycloudflare.com` game URL with your friends. The launcher downloads Cloudflare's helper on first use and exposes the production game server through a temporary HTTPS link. Keep the PC awake and the launcher running. The URL changes on restart; it is a playtest link, not permanent hosting. [Cloudflare Quick Tunnel documentation](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
+1. Open [the public game](https://commander-wars-online.onrender.com) and have every friend use that same URL. No home server or tunnel needs to be running. If the free service is waking up, allow about a minute for the first load.
 2. Open that URL, enter your name and choose **Host a lobby**. Share its six-character lobby code or **Copy invite link**. Friends open the same website and choose **Join lobby**.
 3. The host sets each unoccupied section to **Human**, **AI** or **Closed**, assigns teams and picks **Easy**, **Normal** or **Hard** for each AI. **2 vs 2** pairs Blue/Red against Green/Purple; the host can change any team, and guests can choose their own team. You can play two friends against two AI, four friends in 2v2, free for all, or smaller matches with closed sections.
 4. Every human must join and click **Ready**. The host starts the match. Setup changes reset guest readiness. Closed sections have no keep or army. **Tab**, **1–9**, the sidebar and other existing controls operate your own section.
@@ -27,9 +29,11 @@ Allies cannot damage or target each other, can benefit from nearby support abili
 
 Lost connections automatically reconnect to the same seat and match. After 60 seconds disconnected, AI temporarily takes over; reconnecting restores human control. **Leave match** hands the section to AI immediately. Rooms are kept in memory and expire after everyone has been offline for five minutes. Restarting the server ends its lobbies and matches.
 
+For temporary PC-hosted playtests, `Play Online.cmd` still prints a separate `https://...trycloudflare.com` game URL. It downloads Cloudflare's helper on first use. Keep the PC awake and the launcher running; that temporary URL changes on restart and has separate lobbies from the public Render server. [Cloudflare Quick Tunnel documentation](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
+
 For a permanent internet address, run `pnpm install --frozen-lockfile`, `pnpm build` and `pnpm start` on a Node service that supports persistent WebSockets. `PORT` and `HOST` configure the listener; the default is port 8787 on all interfaces. Serve HTTPS and proxy `/ws` to the same process. No database or account system is required for this prototype.
 
-The approved free public host is prepared in `render.yaml`; see [public hosting](docs/public-hosting.md) for the target URL, free-tier limits, source-access details and publication checks. Hosting account sign-in and deployment verification are still required before the target URL is live.
+The public game runs on Render's Free plan, with configuration in `render.yaml`. See [public hosting](docs/public-hosting.md) for the service dashboard, free-tier limits, source-access details, update procedure and verification results. Deploys are manual because replacing the server ends current matches.
 
 ## Milestones
 
@@ -52,6 +56,7 @@ The approved free public host is prepared in `render.yaml`; see [public hosting]
 17. Configurable human/AI/closed sections, alliances, shared team victory and fair AI difficulty.
 18. Lobby codes, online authoritative matches, per-player keyboard/sidebar controls, reconnects and an internet play launcher.
 19. Separate ranged rear ranks and immediate firing-range stops for combat orders.
+20. Stable public HTTPS hosting on Render's free tier, with verified internet lobby joining, synchronized controls and reconnects.
 
 Each milestone is committed as a runnable state. This is a mechanics prototype, not a balanced release.
 
