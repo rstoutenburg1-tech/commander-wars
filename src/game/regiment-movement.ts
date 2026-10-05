@@ -1,4 +1,4 @@
-import { FORMATIONS, MAP, STATS, isTroop } from './config';
+import { FORMATIONS, MAP, STATS, isTroop, isRangedTroop } from './config';
 import { projectWalkable } from './navigation';
 import type { Formation, Point, Regiment, Unit, World } from './types';
 
@@ -38,7 +38,29 @@ export function formationSlot(formation: Formation, i: number, n: number, facing
 
 export function regimentTroops(w: World, r: Regiment) {
   return w.units.filter(u => u.hp > 0 && u.team === r.team && u.regiment === r.index && isTroop(u.kind) && u.garrison === undefined && !u.tactical)
-    .sort((a, b) => Number(STATS[a.kind].range > 3) - Number(STATS[b.kind].range > 3) || a.id - b.id);
+    .sort((a, b) => Number(isRangedTroop(a.kind)) - Number(isRangedTroop(b.kind)) || a.id - b.id);
+}
+
+/** Separate weapon roles into complete ranks, even when the melee row is small. */
+export function troopFormationSlots(formation: Formation, troops: readonly Unit[], facing: number): Map<number, Point> {
+  const ordered = [...troops].sort((a, b) => Number(isRangedTroop(a.kind)) - Number(isRangedTroop(b.kind)) || a.id - b.id);
+  const meleeCount = ordered.filter(u => !isRangedTroop(u.kind)).length;
+  if (!meleeCount || meleeCount === ordered.length) return new Map(ordered.map((u, i) => [u.id, formationSlot(formation, i, ordered.length, facing)]));
+  const slots = new Map<number, Point>(), spacing = FORMATIONS[formation].spacing;
+  const width = Math.min(formation === 'wall' ? 6 : 8, ordered.length);
+  let row = 0;
+  for (const rank of [ordered.slice(0, meleeCount), ordered.slice(meleeCount)]) {
+    let start = 0;
+    while (start < rank.length) {
+      const count = Math.min(formation === 'wedge' ? row + 1 : width, rank.length - start);
+      for (let i = 0; i < count; i++) {
+        const side = (i - (count - 1) / 2) * spacing, back = -row * spacing;
+        slots.set(rank[start + i].id, { x: side * Math.cos(facing) + back * Math.sin(facing), z: -side * Math.sin(facing) + back * Math.cos(facing) });
+      }
+      start += count; row++;
+    }
+  }
+  return slots;
 }
 
 export function centroid(troops: Unit[]): Point {
@@ -59,7 +81,7 @@ function escortFacing(hero: Unit) {
 }
 
 function escortFootprint(r: Regiment, troops: Unit[]): EscortFootprint {
-  const slots = troops.map((_, i) => formationSlot(r.formation, i, troops.length, 0));
+  const slots = [...troopFormationSlots(r.formation, troops, 0).values()];
   const min = Math.min(...slots.map(slot => slot.x)), max = Math.max(...slots.map(slot => slot.x));
   const radius = Math.max(...troops.map(u => STATS[u.kind].radius));
   return { width: max - min + radius * 2, depth: -Math.min(...slots.map(slot => slot.z)), center: (min + max) / 2 };
@@ -81,11 +103,12 @@ export function updateRegimentGoals(w: World, r: Regiment, options: { reform?: b
   const target = w.units.find(u => u.id === r.target && u.hp > 0 && u.team !== r.team);
   if (r.movement === 'attack' && target) r.goal = projectWalkable(target);
   if (!target) r.target = undefined;
-  troops.forEach((u, i) => {
+  const slots = troopFormationSlots(r.formation, troops, r.facing);
+  troops.forEach(u => {
     // Hold stops each soldier where it stands. Only a new recruit or an explicit
     // formation change needs a slot in an already stationary regiment.
     if (r.movement !== 'hold' || options.reform || u === options.newMember) {
-      const offset = formationSlot(r.formation, i, troops.length, r.facing);
+      const offset = slots.get(u.id)!;
       u.goal = projectWalkable({ x: r.goal.x + offset.x, z: r.goal.z + offset.z });
     }
     u.order = r.movement;

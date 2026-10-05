@@ -1,6 +1,7 @@
 export type Kind = 'hero' | 'footman' | 'archer' | 'musketeer' | 'knight' | 'base' | 'boss' | 'gate';
 export type TroopKind = 'footman' | 'archer' | 'musketeer' | 'knight';
 export const isTroop = (kind: Kind): kind is TroopKind => kind === 'footman' || kind === 'archer' || kind === 'musketeer' || kind === 'knight';
+export const isRangedTroop = (kind: Kind): kind is 'archer' | 'musketeer' => kind === 'archer' || kind === 'musketeer';
 export interface Stats { hp: number; damage: number; range: number; speed: number; cooldown: number; cost: number; xp: number; radius: number }
 export const STATS: Record<Kind, Stats> = {
   hero: { hp: 1800, damage: 45, range: 7, speed: 4.5, cooldown: 1.1, cost: 0, xp: 180, radius: 1 },

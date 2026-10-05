@@ -1,7 +1,7 @@
 import type { Order, Point, World } from './types';
 import { isTroop } from './config';
 import { leaveTower } from './gates';
-import { centroid, formationSlot, updateRegimentGoals } from './regiment-movement';
+import { centroid, troopFormationSlots, updateRegimentGoals } from './regiment-movement';
 import { clearRoute, projectWalkable } from './navigation';
 import { enemies, localPlayer } from './match';
 export function commandRegiment(w: World, team: number, index: number, order: Order, point?: Point, target?: number) {
@@ -38,13 +38,15 @@ export function command(w: World, ids: Set<number>, order: Order, point?: Point,
   const troops = independent.filter(u => isTroop(u.kind));
   const center = troops.length ? centroid(troops) : undefined;
   const facing = point && center ? Math.atan2(point.x - center.x, point.z - center.z) : 0;
+  const slots = new Map([...new Set(troops.map(u => w.regiments.find(r => r.team === u.team && r.index === u.regiment)?.formation ?? 'line'))]
+    .map(formation => [formation, troopFormationSlots(formation, troops, facing)]));
   independent.forEach(u => {
     if (u.kind !== 'hero' && fullRegiments.has(u.regiment)) return;
     u.tactical = true;
     u.order = order; u.target = target; u.autoTarget = undefined; clearRoute(u);
     if (point) {
       const r = w.regiments.find(r => r.team === u.team && r.index === u.regiment);
-      const offset = u.kind === 'hero' ? { x: 0, z: 0 } : formationSlot(r?.formation ?? 'line', troops.indexOf(u), troops.length, facing);
+      const offset = u.kind === 'hero' ? { x: 0, z: 0 } : slots.get(r?.formation ?? 'line')!.get(u.id)!;
       u.goal = projectWalkable({ x: point.x + offset.x, z: point.z + offset.z });
     }
     if (order === 'hold') u.goal = { x: u.x, z: u.z };
