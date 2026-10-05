@@ -1,0 +1,22 @@
+# Deployment proposal only: creating this service requires approval of the URL and cost.
+# Render confirms the exact available onrender.com hostname during service creation.
+services:
+  - type: web
+    name: commander-wars-online
+    runtime: node
+    region: oregon
+    plan: starter
+    branch: main
+    numInstances: 1
+    # Rooms live in memory. Deploy manually between matches to avoid ending them on every push.
+    autoDeployTrigger: "off"
+    buildCommand: npx --yes pnpm@11.19.0 install --frozen-lockfile --prod=false && npx --yes pnpm@11.19.0 test && npx --yes pnpm@11.19.0 build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 24.19.0
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
