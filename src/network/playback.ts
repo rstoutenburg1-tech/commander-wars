@@ -24,6 +24,7 @@ export class SnapshotPlayback {
     if (this.frames.at(-1)?.time === world.time) this.frames[this.frames.length - 1] = frame;
     else this.frames.push(frame);
     this.frames = this.frames.slice(-12); this.receivedAt = now;
+    for (const [id, entry] of this.effects) if (entry.until < world.time - 1.2) this.effects.delete(id);
     for (const effect of world.effects) {
       const id = effectIdentity(effect, world.time), until = world.time + effect.life;
       const existing = this.effects.get(id);
@@ -35,6 +36,9 @@ export class SnapshotPlayback {
   sample(world: World, now: number): World {
     if (!this.frames.length) return world;
     const latest = this.frames.at(-1)!;
+    // Browsers suspend animation frames in background tabs. Resume near the
+    // current server state instead of replaying a minute of stale presentation.
+    if (now - this.renderedAt > 1000 || latest.time - this.time > 1) this.time = Math.max(this.time, latest.time - 0.1);
     const elapsed = Math.max(0, Math.min((now - this.renderedAt) / 1000, 0.1)); this.renderedAt = now;
     // Play about one snapshot behind. Adjust gently for jitter, never run time
     // backwards, and freeze at the latest state rather than inventing combat.

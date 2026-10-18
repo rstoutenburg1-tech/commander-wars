@@ -59,3 +59,12 @@ test('garrison transitions and genuine teleports do not interpolate through wall
   hero.garrison = 20; hero.x += 1; world.time = .2; playback.push(world, 200);
   assert.equal(playback.sample(world, 210).units.find(unit => unit.id === hero.id)!.x, hero.x);
 });
+
+test('returning to a background tab immediately resumes current play instead of replaying stale animations', () => {
+  const playback = new SnapshotPlayback(), world = createWorld(), hero = world.units.find(unit => unit.kind === 'hero')!;
+  hero.x = 0; hero.z = 0; playback.push(world, 0); playback.sample(world, 0);
+  for (let i = 1; i <= 600; i++) { world.time = i / 10; hero.x = world.time; playback.push(world, i * 100); }
+  const resumed = playback.sample(world, 60000);
+  assert.ok(resumed.time >= 59.9 && resumed.time <= 60);
+  assert.ok(resumed.units.find(unit => unit.id === hero.id)!.x >= 59.9);
+});
