@@ -16,11 +16,14 @@ export type ClientMessage =
   | { type: 'ready'; ready: boolean }
   | { type: 'start' }
   | { type: 'action'; action: GameAction; sequence: number }
+  | { type: 'ping'; sent: number }
   | { type: 'leave' };
 export type ServerMessage =
   | { type: 'welcome'; id: string; token: string; seat: number; lobby: LobbyState }
   | { type: 'lobby'; lobby: LobbyState }
-  | { type: 'start'; world: World; seat: number }
-  | { type: 'snapshot'; world: World }
+  | { type: 'start'; world: World; seat: number; ack?: number }
+  | { type: 'snapshot'; world: World; ack?: number }
+  | { type: 'actionResult'; sequence: number; accepted: boolean }
+  | { type: 'pong'; sent: number }
   | { type: 'error'; message: string }
   | { type: 'left' };

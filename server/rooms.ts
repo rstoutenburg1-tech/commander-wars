@@ -26,6 +26,7 @@ export class RoomManager {
   private snapshotTicks = 0;
   private reconnectGraceMs: number;
   private roomIdleMs: number;
+  private urgentSnapshots = new Set<Room>();
   constructor(options: RoomOptions = {}) {
     this.reconnectGraceMs = options.reconnectGraceMs ?? 60_000;
     this.roomIdleMs = options.roomIdleMs ?? 300_000;
@@ -57,6 +58,17 @@ export class RoomManager {
     return { code: room.code, hostId: room.hostId, phase: room.phase, settings: structuredClone(room.settings), members: room.members.map(({ id, seat, name, ready, connected }) => ({ id, seat, name, ready, connected })), revision: room.revision };
   }
   private broadcast(room: Room, message: ServerMessage) { for (const member of room.members) this.send(member.socket, message); }
+  private snapshot(room: Room) {
+    if (!room.world) return;
+    // Serialize once per room, not once per player. Drop obsolete snapshots for
+    // a slow connection instead of building a queue of old positions/commands.
+    const world = JSON.stringify(room.world);
+    for (const member of room.members) {
+      const socket = member.socket;
+      if (socket?.readyState === WebSocket.OPEN && socket.bufferedAmount < 64 * 1024)
+        socket.send(`{"type":"snapshot","ack":${member.lastSequence},"world":${world}}`);
+    }
+  }
   private lobby(room: Room) { room.revision++; this.broadcast(room, { type: 'lobby', lobby: this.state(room) }); }
   private code() {
     const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -85,6 +97,10 @@ export class RoomManager {
   private receive(socket: WebSocket, connection: Connection, input: unknown) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) fail('Invalid message');
     const message = input as Record<string, unknown>;
+    if (message.type === 'ping') {
+      if (typeof message.sent !== 'number' || !Number.isFinite(message.sent)) fail('Invalid ping');
+      this.send(socket, { type: 'pong', sent: message.sent }); return;
+    }
     if (message.type === 'create' || message.type === 'join' || message.type === 'resume') {
       if (connection.member) fail('Leave your current lobby first');
       if (message.type === 'create') {
@@ -110,7 +126,7 @@ export class RoomManager {
       if (room.world) { room.world.players[member.seat].controller = 'human'; room.world.players[member.seat].aiTimer = 0; }
       if (oldSocket && oldSocket !== socket) oldSocket.close(1000, 'Session resumed elsewhere');
       this.send(socket, { type: 'welcome', id: member.id, token: member.token, seat: member.seat, lobby: this.state(room) });
-      if (room.world) this.send(socket, { type: 'start', world: room.world, seat: member.seat });
+      if (room.world) this.send(socket, { type: 'start', world: room.world, seat: member.seat, ack: member.lastSequence });
       this.lobby(room); return;
     }
     const room = connection.room, member = connection.member;
@@ -120,7 +136,10 @@ export class RoomManager {
       if (room.phase !== 'playing' || !room.world) fail('The match is not running');
       if (!Number.isSafeInteger(message.sequence) || (message.sequence as number) <= member.lastSequence) fail('Invalid action sequence');
       member.lastSequence = message.sequence as number;
-      if (!applyAction(room.world, member.seat, message.action)) fail('Action unavailable or not owned by your section');
+      const accepted = applyAction(room.world, member.seat, message.action);
+      this.send(socket, { type: 'actionResult', sequence: member.lastSequence, accepted });
+      this.urgentSnapshots.add(room);
+      if (!accepted) fail('Action unavailable or not owned by your section');
       return;
     }
     if (room.phase !== 'lobby') fail('Game setup is locked after the match starts');
@@ -150,7 +169,7 @@ export class RoomManager {
         if (!occupant?.connected || !occupant.ready) fail('Every human player must be connected and ready');
       }
       room.world = createWorld(room.settings); room.world.networked = true; room.phase = 'playing';
-      for (const occupant of room.members) this.send(occupant.socket, { type: 'start', world: room.world, seat: occupant.seat });
+      for (const occupant of room.members) this.send(occupant.socket, { type: 'start', world: room.world, seat: occupant.seat, ack: occupant.lastSequence });
       this.lobby(room); return;
     }
     fail('Unknown lobby message');
@@ -185,13 +204,17 @@ export class RoomManager {
     const now = Date.now(), snapshot = ++this.snapshotTicks % 2 === 0;
     for (const room of this.rooms.values()) {
       if (room.offlineSince !== undefined && now - room.offlineSince > this.roomIdleMs) { this.rooms.delete(room.code); continue; }
+      // Reserve abandoned matches for reconnect, but do not make the free host
+      // simulate or serialize invisible armies while everyone is offline.
+      if (!room.members.some(member => member.connected)) continue;
       if (room.phase === 'playing' && room.world) {
         for (const member of room.members) if (!member.connected && member.disconnectedAt !== undefined && now - member.disconnectedAt >= this.reconnectGraceMs) this.takeover(room, member);
         step(room.world, RULES.tick);
-        if (room.world.winner !== null) { room.phase = 'finished'; this.lobby(room); this.broadcast(room, { type: 'snapshot', world: room.world }); }
+        if (room.world.winner !== null) { room.phase = 'finished'; this.lobby(room); this.urgentSnapshots.add(room); }
       }
-      if (snapshot && room.world) this.broadcast(room, { type: 'snapshot', world: room.world });
+      if ((snapshot && room.phase === 'playing' || this.urgentSnapshots.has(room)) && room.world) this.snapshot(room);
     }
+    this.urgentSnapshots.clear();
   }
   close() { clearInterval(this.tickTimer); this.rooms.clear(); this.connections.clear(); }
 }

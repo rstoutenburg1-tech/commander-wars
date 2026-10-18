@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { NetworkClient, reconcileEffects, websocketUrl } from '../src/network/client';
 import { createWorld } from '../src/game/world';
 import { defaultSettings } from '../src/game/match';
+import { applyAction } from '../src/game/actions';
 import type { LobbyState, ServerMessage } from '../src/network/protocol';
 
 test('public lobby endpoints use secure sockets and preserve custom server paths', () => {
@@ -39,6 +40,55 @@ class FakeSocket {
   receive(message: ServerMessage) { this.emit('message', { data: JSON.stringify(message) }); }
   close() { this.readyState = 3; this.emit('close'); }
 }
+
+test('delayed confirmations preserve newer orders and rapid roster changes exactly once, with authoritative costs', () => {
+  const original = { WebSocket: globalThis.WebSocket, location: (globalThis as any).location, sessionStorage: (globalThis as any).sessionStorage };
+  Object.assign(globalThis, { WebSocket: FakeSocket, location: { href: 'https://game.example/' }, sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} } });
+  const client = new NetworkClient();
+  try {
+    const settings = defaultSettings(); settings.slots[1].controller = 'human';
+    const lobby: LobbyState = { code: 'ABC234', hostId: 'host', phase: 'playing', revision: 1, settings, members: [] };
+    const server = createWorld(settings); server.networked = true;
+    const hero = server.units.find(unit => unit.team === 1 && unit.kind === 'hero')!;
+    client.connect({ mode: 'join', name: 'Friend', code: lobby.code });
+    const socket = FakeSocket.instances.at(-1)!; socket.open();
+    socket.receive({ type: 'welcome', id: 'friend', token: 'token', seat: 1, lobby });
+    socket.receive({ type: 'start', world: server, seat: 1, ack: 0 });
+    const reference = client.world!;
+    const first = { type: 'order' as const, ids: [hero.id], order: 'move' as const, point: { x: 75, z: 75 } };
+    const second = { ...first, point: { x: 80, z: 70 } };
+    client.sendAction(first); client.sendAction(second);
+    client.sendAction({ type: 'roster', kind: 'archer', delta: 1 });
+    client.sendAction({ type: 'roster', kind: 'archer', delta: 1 });
+    assert.deepEqual(reference.units.find(unit => unit.id === hero.id)!.goal, second.point);
+    assert.equal(reference.players[1].production.counts.archer, 2);
+    socket.receive({ type: 'snapshot', world: server, ack: 0 });
+    assert.equal(client.world, reference);
+    assert.deepEqual(reference.units.find(unit => unit.id === hero.id)!.goal, second.point, 'old updates cannot cancel a newer command');
+    assert.equal(reference.players[1].production.counts.archer, 2, 'replaying does not double count');
+    applyAction(server, 1, first);
+    socket.receive({ type: 'snapshot', world: server, ack: 1 });
+    assert.deepEqual(reference.units.find(unit => unit.id === hero.id)!.goal, second.point);
+    applyAction(server, 1, second); applyAction(server, 1, { type: 'roster', kind: 'archer', delta: 1 });
+    socket.receive({ type: 'snapshot', world: server, ack: 3 });
+    assert.equal(reference.players[1].production.counts.archer, 2);
+    applyAction(server, 1, { type: 'roster', kind: 'archer', delta: 1 });
+    socket.receive({ type: 'snapshot', world: server, ack: 4 });
+    assert.equal(client.pendingCount, 0); assert.equal(reference.players[1].production.counts.archer, 2);
+    const gold = reference.players[1].gold;
+    client.sendAction({ type: 'upgrade', building: 'forest' });
+    assert.equal(reference.players[1].gold, gold); assert.equal(reference.players[1].upgrades.length, 0);
+    client.sendAction({ type: 'heroSetting', field: 'combatStyle', value: 'ranged' });
+    assert.equal(reference.players[1].combatStyle, 'ranged');
+    socket.receive({ type: 'actionResult', sequence: 6, accepted: false });
+    assert.equal(reference.players[1].combatStyle, 'melee', 'a rejected control rolls back');
+    assert.equal(reference.players[0].production.counts.archer, 0, 'another player is never predicted');
+    socket.receive({ type: 'pong', sent: performance.now() - 200 });
+    assert.ok(client.latencyMs! >= 200);
+    client.sendAction(first); socket.close(); assert.equal(client.pendingCount, 0);
+    assert.equal(client.sendAction(second), false, 'do not queue or replay gameplay while disconnected');
+  } finally { client.disconnect(false); Object.assign(globalThis, original); }
+});
 
 test('resume restores the same world and seat without opening a second match or replaying commands', () => {
   const storage = new Map<string, string>();
@@ -82,5 +132,22 @@ test('resume restores the same world and seat without opening a second match or 
     expired.receive({ type: 'error', message: 'This lobby has expired.' });
     assert.equal(client.status, 'disconnected'); assert.equal(client.lastError, 'This lobby has expired.');
     assert.equal(NetworkClient.savedSession(), undefined); assert.equal(client.token, '');
+  } finally { client.disconnect(false); Object.assign(globalThis, original); }
+});
+
+test('a silent stalled connection stops accepting orders and reconnects instead of staying falsely online', () => {
+  const original = { WebSocket: globalThis.WebSocket, location: (globalThis as any).location, sessionStorage: (globalThis as any).sessionStorage, performance: globalThis.performance, setInterval: globalThis.setInterval, clearInterval: globalThis.clearInterval };
+  let now = 0, heartbeat: (() => void) | undefined;
+  Object.assign(globalThis, { WebSocket: FakeSocket, location: { href: 'https://game.example/' }, sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} }, performance: { now: () => now }, setInterval: (callback: () => void) => { heartbeat = callback; return { unref() {} }; }, clearInterval() {} });
+  const client = new NetworkClient();
+  try {
+    client.connect({ mode: 'host', name: 'Host' });
+    const socket = FakeSocket.instances.at(-1)!; socket.open();
+    socket.receive({ type: 'welcome', id: 'host', token: 'token', seat: 0, lobby: { code: 'ABC234', hostId: 'host', phase: 'lobby', revision: 1, settings: defaultSettings(), members: [] } });
+    now = 2000; heartbeat!(); assert.deepEqual(JSON.parse(socket.sent.at(-1)!), { type: 'ping', sent: 2000 });
+    now = 2250; socket.receive({ type: 'pong', sent: 2000 }); assert.equal(client.latencyMs, 250);
+    now = 11000; heartbeat!();
+    assert.equal(client.status, 'reconnecting'); assert.equal(socket.readyState, 3);
+    assert.equal(client.sendAction({ type: 'roster', kind: 'archer', delta: 1 }), false);
   } finally { client.disconnect(false); Object.assign(globalThis, original); }
 });

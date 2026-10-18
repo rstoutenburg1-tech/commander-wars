@@ -142,3 +142,43 @@ test('invalid JSON reports an error and excessive messages close the connection'
   const closed = once(peer.socket, 'close'); for (let i = 0; i < 65; i++) peer.send({ type: 'unknown' });
   const [code] = await closed; assert.equal(code, 1008);
 });
+
+test('server acknowledges each player commands and skips queued snapshots without blocking orders or pings', async t => {
+  const { server, open } = await fixture(t), host = await open(), guest = await open();
+  host.send({ type: 'create', name: 'Host', settings: twoHumans() }); const welcome = await host.wait('welcome');
+  guest.send({ type: 'join', name: 'Guest', code: welcome.lobby.code }); await guest.wait('welcome');
+  guest.send({ type: 'ready', ready: true }); await host.wait('lobby', value => value.lobby.members.some(member => member.seat === 1 && member.ready));
+  host.send({ type: 'start' }); await host.wait('start'); const start = await guest.wait('start');
+  const room = server.rooms.rooms.get(welcome.lobby.code)!, socket = room.members.find(member => member.seat === 1)!.socket!;
+  Object.defineProperty(socket, 'bufferedAmount', { configurable: true, get: () => 128 * 1024 });
+  guest.send({ type: 'ping', sent: 1 }); assert.equal((await guest.wait('pong')).sent, 1); guest.messages.length = 0;
+  const hero = start.world.units.find(unit => unit.team === 1 && unit.kind === 'hero')!;
+  guest.send({ type: 'action', sequence: 10, action: { type: 'order', ids: [hero.id], order: 'move', point: { x: 80, z: 80 } } });
+  const result = await guest.wait('actionResult'); assert.equal(result.sequence, 10); assert.equal(result.accepted, true);
+  const seen = await host.wait('snapshot', value => value.world.units.some(unit => unit.id === hero.id && unit.goal.x === 80));
+  assert.equal(seen.ack, 0, 'a different player does not acknowledge the guest command');
+  guest.send({ type: 'ping', sent: 2 }); assert.equal((await guest.wait('pong')).sent, 2);
+  assert.equal(guest.messages.filter(message => message.type === 'snapshot').length, 0, 'do not queue old positions behind a congested connection');
+  delete (socket as any).bufferedAmount;
+  const caughtUp = await guest.wait('snapshot', value => value.ack === 10);
+  assert.equal(caughtUp.world.units.find(unit => unit.id === hero.id)!.goal.x, 80);
+  guest.send({ type: 'action', sequence: 11, action: { type: 'pause' } });
+  assert.equal((await guest.wait('actionResult')).accepted, false); await guest.wait('error');
+  assert.equal((await guest.wait('snapshot', value => value.ack === 11)).ack, 11, 'failed commands also leave the pending queue');
+});
+
+test('abandoned matches reserve their state without consuming simulation ticks and resume when a player returns', async t => {
+  const { server, open } = await fixture(t), host = await open(), guest = await open();
+  host.send({ type: 'create', name: 'Host', settings: twoHumans() }); const welcome = await host.wait('welcome');
+  guest.send({ type: 'join', name: 'Guest', code: welcome.lobby.code }); await guest.wait('welcome');
+  guest.send({ type: 'ready', ready: true }); await host.wait('lobby', value => value.lobby.members.some(member => member.seat === 1 && member.ready));
+  host.send({ type: 'start' }); await host.wait('start'); await guest.wait('start');
+  await host.close(); await guest.close();
+  const room = server.rooms.rooms.get(welcome.lobby.code)!;
+  // Wait for the server to observe the close before taking the paused sample.
+  for (let i = 0; i < 20 && room.members.some(member => member.connected); i++) await new Promise(resolve => setTimeout(resolve, 5));
+  const time = room.world!.time; await new Promise(resolve => setTimeout(resolve, 130));
+  assert.equal(room.world!.time, time);
+  const resumed = await open(); resumed.send({ type: 'resume', code: welcome.lobby.code, token: welcome.token }); await resumed.wait('start');
+  assert.ok((await resumed.wait('snapshot', value => value.world.time > time)).world.time > time);
+});

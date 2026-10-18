@@ -21,13 +21,26 @@ export class Input {
   private start?: { x: number; y: number };
   private panStart?: { pointerId: number; x: number; y: number };
   private box = document.createElement('div');
+  private orderMarker = document.createElement('div');
+  private orderFeedback?: { point: Point; until: number };
   private get team() { return localPlayer(this.w); }
-  dispatch(action: GameAction) { return this.sender ? !!this.sender(action) : applyAction(this.w, this.team, action); }
+  dispatch(action: GameAction) {
+    const accepted = this.sender ? !!this.sender(action) : applyAction(this.w, this.team, action);
+    if (accepted && action.type === 'order' && action.point) {
+      this.orderFeedback = { point: { ...action.point }, until: performance.now() + 750 };
+      this.orderMarker.textContent = action.order === 'move' ? 'Move' : action.order === 'retreat' ? 'Retreat' : 'Attack';
+      this.orderMarker.classList.toggle('attack', action.order === 'attack' || action.order === 'advance');
+      const point = this.view.screen(action.point), box = this.view.canvas.getBoundingClientRect();
+      this.orderMarker.style.left = `${point.x - box.left}px`; this.orderMarker.style.top = `${point.y - box.top}px`; this.orderMarker.hidden = false;
+    }
+    return accepted;
+  }
   constructor(private w: World, private view: Battlefield, readonly onKey: (key: string) => void = () => {}, private sender?: (action: GameAction) => unknown) {
     this.activeGateSite = this.team;
     this.box.className = 'selection-box'; document.body.append(this.box);
     this.cursor.className = 'keyboard-cursor'; this.cursor.innerHTML = '<span class="crosshair"></span><small></small>';
     view.canvas.parentElement!.append(this.cursor);
+    this.orderMarker.className = 'order-feedback'; this.orderMarker.hidden = true; view.canvas.parentElement!.append(this.orderMarker);
     try {
       const saved = JSON.parse(localStorage.getItem('commander-wars-ability-keys') ?? '{}');
       for (const ability of Object.keys(ABILITIES) as Ability[]) if (saved[ability] === null || ABILITY_KEYS.includes(saved[ability])) this.abilityBindings[ability] = saved[ability];
@@ -142,6 +155,8 @@ export class Input {
   clearSelection() { this.selected.clear(); this.clearRegimentSelection(); this.activeRegiment = null; }
   private clearRegimentSelection() { this.selectedRegimentIndices.clear(); this.wholeArmy = false; }
   private refreshTroopSelection() {
+    const valid = new Set([...this.w.units.filter(u => u.hp > 0 && u.team === this.team).map(u => u.id), ...this.w.structures.filter(s => s.team === this.team).map(s => s.id)]);
+    for (const id of this.selected) if (!valid.has(id)) this.selected.delete(id);
     for (const u of this.w.units) if (u.hp > 0 && u.team === this.team && isTroop(u.kind) && u.garrison === undefined && (this.wholeArmy || this.selectedRegimentIndices.has(u.regiment))) this.selected.add(u.id);
   }
   orderSelection(order: Order, point?: Point, target?: number) {
@@ -182,6 +197,12 @@ export class Input {
     return nearest;
   }
   updateCursor(dt: number) {
+    const feedback = this.orderFeedback;
+    this.orderMarker.hidden = !feedback || performance.now() >= feedback.until;
+    if (feedback && !this.orderMarker.hidden) {
+      const point = this.view.screen(feedback.point), box = this.view.canvas.getBoundingClientRect();
+      this.orderMarker.style.left = `${point.x - box.left}px`; this.orderMarker.style.top = `${point.y - box.top}px`;
+    }
     this.refreshTroopSelection();
     const r = this.view.canvas.getBoundingClientRect();
     Object.assign(this.screenCursor, advanceCursor(this.screenCursor, this.cursorKeys, dt, r.width, r.height));

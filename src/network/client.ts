@@ -1,6 +1,8 @@
 import type { MatchSettings } from '../game/match';
 import type { Effect, World } from '../game/types';
 import type { ClientMessage, GameAction, LobbyState, ServerMessage } from './protocol';
+import { applyAction } from '../game/actions';
+import { effectIdentity, SnapshotPlayback } from './playback';
 
 export type LobbyView = LobbyState;
 export type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
@@ -25,10 +27,7 @@ export function websocketUrl(address?: string, base = location.href) {
 
 /** Rendering tracks effects by object identity; reuse a spell across snapshots. */
 export function reconcileEffects(previous: World, incoming: World) {
-  const key = (effect: Effect, time: number) => JSON.stringify([
-    effect.kind, effect.source, effect.target, effect.x, effect.z, effect.to?.x, effect.to?.z, effect.radius, effect.color,
-    Math.round((time - (effect.duration ?? effect.life) + effect.life) * 1000),
-  ]);
+  const key = effectIdentity;
   const live = new Map<string, Effect[]>();
   for (const effect of previous.effects) {
     const id = key(effect, previous.time); live.set(id, [...live.get(id) ?? [], effect]);
@@ -48,6 +47,13 @@ export class NetworkClient {
   code = '';
   lobby?: LobbyState;
   world?: World;
+  latencyMs?: number;
+  get pendingCount() { return this.pending.length; }
+  private playback = new SnapshotPlayback();
+  private authoritative?: World;
+  private pending: { sequence: number; action: GameAction }[] = [];
+  private heartbeat?: ReturnType<typeof setInterval>;
+  private lastMessageAt = 0;
   private socket?: WebSocket;
   private connectOptions?: ConnectOptions;
   private endpoint = '';
@@ -74,6 +80,8 @@ export class NetworkClient {
   onMessage(listener: (message: ServerMessage) => void) { this.messageListeners.add(listener); return () => this.messageListeners.delete(listener); }
 
   connect(options: ConnectOptions) {
+    const previous = this.socket; this.socket = undefined; previous?.close();
+    this.stopHeartbeat(); this.pending = []; this.authoritative = undefined; this.playback.reset(); this.latencyMs = undefined;
     this.intentionalClose = false; this.connectOptions = options; this.attempts = 0;
     this.sequence = 0; this.started = false; this.world = undefined; this.lobby = undefined;
     this.id = ''; this.token = options.token ?? ''; this.code = options.code ?? ''; this.lastError = '';
@@ -118,11 +126,13 @@ export class NetworkClient {
     });
     socket.addEventListener('message', event => {
       if (this.socket !== socket || this.intentionalClose) return;
+      this.lastMessageAt = performance.now();
       try { this.receive(JSON.parse(event.data) as ServerMessage); }
       catch { this.options.onError?.('The lobby server sent an invalid message.'); }
     });
     socket.addEventListener('close', () => {
       if (this.socket !== socket || this.intentionalClose) return;
+      this.stopHeartbeat(); this.pending = [];
       if (this.token && this.code && this.attempts < 8) {
         this.setStatus('reconnecting', 'Connection lost. Your section is reserved while you reconnect.');
         const delay = Math.min(1000 * 2 ** this.attempts++, 8000);
@@ -137,14 +147,20 @@ export class NetworkClient {
       this.awaitingWelcome = false;
       this.id = message.id; this.token = message.token; this.seat = message.seat; this.code = message.lobby.code;
       this.attempts = 0; this.lastError = ''; this.saveSession();
+      this.pending = []; this.startHeartbeat();
       this.setStatus('connected', 'Connected.'); this.lobby = message.lobby; this.options.onLobby?.(message.lobby);
     } else if (message.type === 'lobby') { this.lobby = message.lobby; this.options.onLobby?.(message.lobby); }
     else if (message.type === 'start' || message.type === 'snapshot') {
       if (message.type === 'start') this.seat = message.seat;
-      if (this.world) { const effects = reconcileEffects(this.world, message.world); Object.assign(this.world, message.world, { effects }); }
-      else this.world = message.world;
-      this.world.localPlayer = this.seat; this.world.networked = true;
-      if (!this.started) { this.started = true; this.options.onMatch?.(this.world, this); }
+      this.authoritative = message.world;
+      this.pending = message.ack === undefined ? [] : this.pending.filter(action => action.sequence > message.ack!);
+      this.playback.push(message.world, performance.now(), message.type === 'start');
+      this.reconcile();
+      if (!this.started && this.world) { this.started = true; this.options.onMatch?.(this.world, this); }
+    } else if (message.type === 'pong') {
+      this.latencyMs = Math.max(0, performance.now() - message.sent);
+    } else if (message.type === 'actionResult') {
+      if (!message.accepted) { this.pending = this.pending.filter(action => action.sequence !== message.sequence); this.reconcile(); }
     } else if (message.type === 'error') {
       this.lastError = message.message; this.options.onError?.(message.message);
       if (this.awaitingWelcome) {
@@ -156,6 +172,29 @@ export class NetworkClient {
     for (const listener of this.messageListeners) listener(message);
   }
 
+  private reconcile() {
+    if (!this.authoritative) return;
+    // Replay only outstanding control changes over a fresh authoritative copy.
+    // Never predict costs, damage, purchases, cooldowns or ability outcomes.
+    const incoming = structuredClone(this.authoritative);
+    incoming.localPlayer = this.seat; incoming.networked = true;
+    for (const pending of this.pending) applyAction(incoming, this.seat, pending.action);
+    if (this.world) { const effects = reconcileEffects(this.world, incoming); Object.assign(this.world, incoming, { effects }); }
+    else this.world = incoming;
+  }
+
+  renderWorld(now: number) { return this.world ? this.playback.sample(this.world, now) : undefined; }
+
+  private stopHeartbeat() { if (this.heartbeat) clearInterval(this.heartbeat); this.heartbeat = undefined; }
+  private startHeartbeat() {
+    this.stopHeartbeat(); this.lastMessageAt = performance.now();
+    this.heartbeat = setInterval(() => {
+      if (performance.now() - this.lastMessageAt > 8000) { this.socket?.close(); return; }
+      this.send({ type: 'ping', sent: performance.now() });
+    }, 2000);
+    this.heartbeat.unref?.();
+  }
+
   private send(message: ClientMessage) {
     if (this.status !== 'connected' || this.socket?.readyState !== WebSocket.OPEN) return false;
     this.socket.send(JSON.stringify(message)); return true;
@@ -164,7 +203,15 @@ export class NetworkClient {
   chooseTeam(alliance: number) { return this.send({ type: 'team', alliance }); }
   ready(ready: boolean) { return this.send({ type: 'ready', ready }); }
   start() { return this.send({ type: 'start' }); }
-  sendAction(action: GameAction) { return this.send({ type: 'action', action, sequence: ++this.sequence }); }
+  sendAction(action: GameAction) {
+    const sequence = ++this.sequence;
+    if (!this.send({ type: 'action', action, sequence })) return false;
+    if (['order', 'formation', 'assign', 'escort', 'stopEscorts', 'heroSetting', 'regimentSetting', 'production', 'roster', 'outpostRegiment'].includes(action.type)) {
+      this.pending.push({ sequence, action: structuredClone(action) });
+      if (this.world) applyAction(this.world, this.seat, action);
+    }
+    return true;
+  }
 
   reconnect() {
     if (!this.connectOptions || !this.token || !this.code) {
@@ -177,6 +224,7 @@ export class NetworkClient {
 
   disconnect(sendLeave = true) {
     this.intentionalClose = true;
+    this.stopHeartbeat(); this.pending = [];
     if (this.retry) { clearTimeout(this.retry); this.retry = undefined; }
     if (sendLeave) this.send({ type: 'leave' });
     this.socket?.close(); this.socket = undefined;

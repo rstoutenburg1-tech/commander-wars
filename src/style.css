@@ -169,3 +169,7 @@ footer { padding: 8px 17px; display: flex; justify-content: space-between; gap: 
 #network-status { max-width: 330px; overflow: hidden; text-overflow: ellipsis; }
 #network-notice button { pointer-events: auto; margin-left: 12px; }
 [hidden] { display: none !important; }
+/* Acknowledge an order immediately, including while its server confirmation is in flight. */
+.order-feedback { position: absolute; z-index: 4; pointer-events: none; transform: translate(-50%, -50%); border: 2px solid #c8ff7a; border-radius: 50%; min-width: 3rem; min-height: 3rem; display: grid; place-items: center; color: #e6ffbf; background: #25402cc9; font-size: .75rem; font-weight: bold; box-shadow: 0 0 14px #c8ff7a88; }
+.order-feedback.attack { border-color: #ff9a6a; color: #ffd1b8; background: #603322c9; }
+.order-feedback[hidden] { display: none; }

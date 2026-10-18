@@ -113,7 +113,9 @@ export class Battlefield {
     return o?.userData.id;
   }
   screen(p: Point) {
-    const v = new THREE.Vector3(p.x, 1, p.z).project(this.camera);
+    // Selection and cursor targeting must match the interpolated on-screen unit.
+    const shown = 'id' in p && typeof p.id === 'number' ? this.views.get(p.id)?.root.position : undefined;
+    const v = new THREE.Vector3(shown?.x ?? p.x, 1, shown?.z ?? p.z).project(this.camera);
     const r = this.canvas.getBoundingClientRect();
     return { x: r.left + (v.x + 1) * r.width / 2, y: r.top + (1 - v.y) * r.height / 2 };
   }

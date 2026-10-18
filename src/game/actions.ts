@@ -59,9 +59,14 @@ export function applyAction(w: World, seat: number, input: unknown): boolean {
       if (!selection(a.ids) || !groups(a.regiments) || !['move', 'advance', 'hold', 'attack', 'follow', 'retreat'].includes(a.order)) return false;
       if (a.point && (typeof a.point !== 'object' || !Number.isFinite(a.point.x) || !Number.isFinite(a.point.z))) return false;
       if (['move', 'advance', 'attack'].includes(a.order) && !a.point) return false;
-      if (a.target !== undefined && (!Number.isSafeInteger(a.target) || !w.units.some(u => u.id === a.target && u.hp > 0 && enemies(w, seat, u.team)))) return false;
+      if (a.target !== undefined && (!Number.isSafeInteger(a.target) || a.target <= 0)) return false;
+      const target = a.target === undefined ? undefined : w.units.find(u => u.id === a.target && u.hp > 0);
+      if (target && !enemies(w, seat, target.team)) return false;
       const point = a.point ? { x: clamp(a.point.x, -MAP.half, MAP.half), z: clamp(a.point.z, -MAP.half, MAP.half) } : undefined;
-      command(w, new Set(a.ids), a.order, point, a.target, a.regiments, seat); return true;
+      // An enemy can die while an internet command is in flight. Keep the order
+      // useful instead of rejecting the whole army's command against a stale ID.
+      const order = a.order === 'attack' && a.target !== undefined && !target ? 'advance' : a.order;
+      command(w, new Set(a.ids), order, point, target?.id, a.regiments, seat); return true;
     }
     case 'formation': {
       if (!selection(a.ids) || !groups(a.regiments) || !ownKey(FORMATIONS, a.formation)) return false;

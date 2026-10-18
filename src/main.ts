@@ -26,6 +26,7 @@ function startGame(w: World, client?: NetworkClient) {
   const input = new Input(w, view, undefined, client ? action => client.sendAction(action) : undefined);
   const hud = new HUD(w, input);
   const minimap = new Minimap(w, view);
+  let refreshConnection: (() => void) | undefined;
   document.querySelector('#leave-match')!.addEventListener('click', () => {
     client?.disconnect();
     location.assign(location.pathname + '?setup=1');
@@ -35,9 +36,13 @@ function startGame(w: World, client?: NetworkClient) {
     const notice = document.querySelector<HTMLElement>('#network-notice')!;
     const noticeText = notice.querySelector('span')!;
     const reconnect = notice.querySelector<HTMLButtonElement>('#reconnect')!;
+    refreshConnection = () => {
+      const timing = client.latencyMs === undefined ? '' : ` · ${Math.round(client.latencyMs)} ms`;
+      connection.textContent = `${client.code} · Team ${w.players[localPlayer(w)].alliance + 1} · ${client.status === 'connected' ? `Online${timing}${client.pendingCount ? ` · ${client.pendingCount} pending` : ''}` : client.status}`;
+    };
     reconnect.addEventListener('click', () => client.reconnect());
     const status = (state: string, message: string) => {
-      connection.textContent = `${client.code} · Team ${w.players[localPlayer(w)].alliance + 1} · ${state === 'connected' ? 'Online' : state}`;
+      refreshConnection!();
       notice.hidden = state === 'connected';
       noticeText.textContent = message; reconnect.hidden = state !== 'disconnected';
     };
@@ -55,8 +60,8 @@ function startGame(w: World, client?: NetworkClient) {
       if (!w.paused && w.winner === null) accumulator += elapsed * hud.speed;
       while (accumulator >= RULES.tick) { step(w, RULES.tick); accumulator -= RULES.tick; }
     }
-    view.pan(elapsed); input.updateCursor(elapsed); view.render(w, input.selected, input.cursorTarget?.id);
-    if ((uiTime += elapsed) > 0.15) { uiTime = 0; hud.update(); minimap.update(); }
+    view.pan(elapsed); input.updateCursor(elapsed); view.render(client?.renderWorld(now) ?? w, input.selected, input.cursorTarget?.id);
+    if ((uiTime += elapsed) > 0.15) { uiTime = 0; hud.update(); minimap.update(); refreshConnection?.(); }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

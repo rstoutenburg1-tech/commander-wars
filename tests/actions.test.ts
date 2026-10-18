@@ -44,6 +44,18 @@ test('network inputs reject malformed coordinates, identifiers and prototype enu
   assert.ok(hero.goal.x > 0 && hero.goal.x <= MAP.half && hero.goal.z < 0 && hero.goal.z >= -MAP.half);
 });
 
+test('an attack whose target died in transit becomes attack-move without allowing allied targets', () => {
+  const w = match(), hero = w.units.find(unit => unit.team === 1 && unit.kind === 'hero')!;
+  const enemy = w.units.find(unit => unit.team === 2 && unit.kind === 'hero')!;
+  const point = { x: enemy.x, z: enemy.z };
+  w.units = w.units.filter(unit => unit !== enemy);
+  assert.equal(applyAction(w, 1, { type: 'order', ids: [hero.id], order: 'attack', target: enemy.id, point }), true);
+  assert.equal(hero.order, 'advance'); assert.equal(hero.target, undefined); assert.deepEqual(hero.goal, point);
+  assert.equal(applyAction(w, 1, { type: 'order', ids: [hero.id], order: 'attack', target: -1, point }), false);
+  const ally = w.units.find(unit => unit.team === 0 && unit.kind === 'hero')!;
+  assert.equal(applyAction(w, 1, { type: 'order', ids: [hero.id], order: 'attack', target: ally.id, point }), false);
+});
+
 test('production, hero settings and formations use the connection seat', () => {
   const w = match(), before = JSON.stringify(w.players[0]);
   assert.equal(applyAction(w, 1, { type: 'production', field: 'regiment', value: 8 }), true);
