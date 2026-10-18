@@ -6,6 +6,16 @@ Published October 5, 2026 on the approved address and Free instance type. The we
 
 Service dashboard: [commander-wars-online](https://dashboard.render.com/web/srv-db1tbpbncjis73c9b680). Initial deployed game commit: `1063ef5`.
 
+## Multiplayer responsiveness update — October 18, 2026
+
+Published game commit `70b8ed5` on the existing Free service. [Deployment](https://dashboard.render.com/web/srv-db1tbpbncjis73c9b680/deploys/dep-dbak93c9v7es738rma80). Render passed all 150 tests and the production build. The public entry page was verified to serve the exact final client asset `/assets/index-CIyebnS1.js`.
+
+Changes: immediate local control feedback with per-player acknowledgements and replay of unconfirmed controls; smooth position/turn/effect playback between snapshots; correct recovery after background-tab pauses; attack-move fallback for enemies that die in transit; detection and replacement of stalled connections without waiting for TCP close; one serialization per room; skipping obsolete snapshots for congested sockets; and suspension of matches when everyone is offline. Combat, resources and ability outcomes remain authoritative.
+
+Two independent browser sessions passed both the existing multiplayer flow and a deliberately delayed network flow on the public server. The latter added at least 320 ms round-trip delay, variable jitter and missing snapshots. It verified immediate order goals/markers before confirmation, no goal reversions, exactly-once rapid roster changes, synchronized commands, reload/resume and commands after resume. One public run measured roughly 467 ms round-trip latency and 202 distinct displayed positions from 20 authoritative positions. No browser exceptions occurred. This validates the tested flows, not large late-game four-human server capacity.
+
+Players should refresh their pages and create a fresh lobby after deployment so every client loads the updated code. No paid hosting upgrade or domain change was made.
+
 ## Deployment
 
 Use one Render Node web service for both the browser build and the authoritative multiplayer server. The root `render.yaml` selects a single **Free** instance in Oregon, using the locally verified Node version and locked dependency versions. Do not upgrade to a paid instance or purchase a domain without further approval. Free hosting sleeps after 15 minutes without inbound traffic and can take about a minute to wake up. Keep this deployment within the free workspace's bandwidth and build allowances; do not enable paid overages.
