@@ -146,8 +146,10 @@ test('a silent stalled connection stops accepting orders and reconnects instead 
     socket.receive({ type: 'welcome', id: 'host', token: 'token', seat: 0, lobby: { code: 'ABC234', hostId: 'host', phase: 'lobby', revision: 1, settings: defaultSettings(), members: [] } });
     now = 2000; heartbeat!(); assert.deepEqual(JSON.parse(socket.sent.at(-1)!), { type: 'ping', sent: 2000 });
     now = 2250; socket.receive({ type: 'pong', sent: 2000 }); assert.equal(client.latencyMs, 250);
+    socket.close = () => { socket.readyState = 2; }; // A dead TCP connection never completes the close handshake.
     now = 11000; heartbeat!();
-    assert.equal(client.status, 'reconnecting'); assert.equal(socket.readyState, 3);
+    assert.equal(client.status, 'reconnecting'); assert.equal(socket.readyState, 2);
+    assert.notEqual(FakeSocket.instances.at(-1), socket, 'start a replacement without waiting for close');
     assert.equal(client.sendAction({ type: 'roster', kind: 'archer', delta: 1 }), false);
   } finally { client.disconnect(false); Object.assign(globalThis, original); }
 });

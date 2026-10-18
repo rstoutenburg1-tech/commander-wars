@@ -189,7 +189,7 @@ export class NetworkClient {
   private startHeartbeat() {
     this.stopHeartbeat(); this.lastMessageAt = performance.now();
     this.heartbeat = setInterval(() => {
-      if (performance.now() - this.lastMessageAt > 8000) { this.socket?.close(); return; }
+      if (performance.now() - this.lastMessageAt > 8000) { this.reconnect(); return; }
       this.send({ type: 'ping', sent: performance.now() });
     }, 2000);
     this.heartbeat.unref?.();
@@ -219,7 +219,10 @@ export class NetworkClient {
       else this.fail('This lobby reservation is no longer available. Join with its code again.');
       return;
     }
-    this.intentionalClose = false; this.attempts = 0; this.socket?.close(); this.open(true);
+    this.intentionalClose = false; this.attempts = 0; this.stopHeartbeat(); this.pending = [];
+    // A half-open TCP connection can take much longer to emit close. Detach it
+    // before opening the replacement so its late events cannot disrupt resume.
+    const previous = this.socket; this.socket = undefined; previous?.close(); this.open(true);
   }
 
   disconnect(sendLeave = true) {
